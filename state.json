@@ -1,12 +1,12 @@
 {
-  "last_advisory_number": "8",
+  "last_advisory_number": "8A",
   "last": {
-    "number": "8",
+    "number": "8A",
     "status_and_name": "Tropical Storm Bertha",
-    "lat": 28.7,
-    "lon": -86.4,
+    "lat": 28.8,
+    "lon": -86.2,
     "wind_mph": 50,
-    "pressure_mb": 998,
-    "issue_dt": "2026-07-21T04:00:00"
+    "pressure_mb": 997,
+    "issue_dt": "2026-07-21T07:00:00"
   }
 }
