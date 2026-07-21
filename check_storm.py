@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-check_storm.py — Fetches TWO NHC products for the storm:
+check_storm.py -- Fetches TWO NHC products for the storm:
 
-  1. The Public/Intermediate Advisory (TCP) — used to detect "something new
+  1. The Public/Intermediate Advisory (TCP) -- used to detect "something new
      posted" and to compare against the last advisory (distance/direction/
      speed moved, NHC's own "CHANGES WITH THIS ADVISORY" section, status/
      wind/pressure deltas).
-  2. The Forecast/Advisory (TCM) — used for the full field-by-field technical
+  2. The Forecast/Advisory (TCM) -- used for the full field-by-field technical
      breakdown, including the multi-day forecast track table.
 
 ...then builds ONE text message with three parts, in this order:
-  A) A short templated "in your voice" blurb — what changed, where it's
+  A) A short templated "in your voice" blurb -- what changed, where it's
      headed, kept tight
   B) The distance/direction/speed-since-last-advisory comparison
   C) The full technical breakdown (every field, plus the forecast track)
 
 This message will typically run 1,000+ characters. SMS gateways often
-truncate or split long messages — that's a known, accepted tradeoff here
+truncate or split long messages -- that's a known, accepted tradeoff here
 (the alternative was splitting this across text + email, which was decided
 against in favor of one message).
 
@@ -36,7 +36,7 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# CONFIG — change these if this storm dissipates and a new one forms with a
+# CONFIG -- change these if this storm dissipates and a new one forms with a
 # different Atlantic storm number (AT2 -> AT3, etc.)
 # ---------------------------------------------------------------------------
 PUBLIC_ADVISORY_URL = "https://www.nhc.noaa.gov/text/MIATCPAT2.shtml?text"
@@ -87,7 +87,7 @@ def zulu_to_central(zstr: str):
 
 
 # ===========================================================================
-# TCP — Public/Intermediate Advisory (drives dedupe + comparison)
+# TCP -- Public/Intermediate Advisory (drives dedupe + comparison)
 # ===========================================================================
 def tcp_header(text: str):
     m = re.search(r"^(.+?)\s+(Intermediate\s+)?Advisory Number\s+(\S+)", text, re.I | re.M)
@@ -169,7 +169,7 @@ def tcp_next_advisory(text: str):
 
 
 # ===========================================================================
-# TCM — Forecast/Advisory (drives the full field breakdown)
+# TCM -- Forecast/Advisory (drives the full field breakdown)
 # ===========================================================================
 def tcm_header(text: str):
     m = re.search(r"^\s*(.+?)\s+FORECAST/ADVISORY NUMBER\s+(\S+)", text, re.I | re.M)
@@ -182,14 +182,13 @@ def tcm_header(text: str):
 
 def tcm_location(text: str):
     # TCM format: "TROPICAL DEPRESSION CENTER LOCATED NEAR 27.5N 85.0W AT 19/2100Z"
-    # (no lettered fields in this product — that's the VDM format, different product)
+    # (no lettered fields in this product -- that's the VDM format, different product)
     m = re.search(
         r"LOCATED\s+NEAR\s+(\d{1,3}\.?\d*)N\s+(\d{1,3}\.?\d*)W\s+AT\s+(\d{1,2}/\d{4}Z)",
         text, re.I,
     )
-    if not m:
-        return None
-    return f"{m.group(1)}\u00b0N, {m.group(2)}\u00b0W"
+    if not m: return None
+    return f"{m.group(1)}degN, {m.group(2)}degW"
 
 
 def tcm_fix_time(text: str):
@@ -216,7 +215,7 @@ def tcm_movement(text: str):
     )
     if m:
         direction = m.group(1).capitalize()
-        return f"{direction} ({m.group(2)}\u00b0) at {with_mph(int(m.group(3)))}"
+        return f"{direction} ({m.group(2)}deg) at {with_mph(int(m.group(3)))}"
     if re.search(r"PRESENT MOVEMENT[^\n]*STATIONARY", text, re.I):
         return "Stationary"
     return None
@@ -239,7 +238,7 @@ def tcm_sustained_wind(text: str):
 
 def tcm_position_accuracy(text: str):
     m = re.search(r"POSITION ACCURATE WITHIN\s+(\d{1,3})\s*NM", text, re.I)
-    return f"\u00b1{m.group(1)} nm" if m else None
+    return f"+/-{m.group(1)} nm" if m else None
 
 
 def tcm_next_advisory(text: str):
@@ -272,7 +271,7 @@ def tcm_peak_wind(points):
 
 
 # ===========================================================================
-# TCD — Discussion product's "FORECAST POSITIONS AND MAX WINDS" table
+# TCD -- Discussion product's "FORECAST POSITIONS AND MAX WINDS" table
 # Cleaner than the TCM track: already has both kt and mph, and uses simple
 # H-offset labels (INIT, 12H, 24H...) instead of full Zulu valid times.
 # ===========================================================================
@@ -322,7 +321,7 @@ def bearing_to_compass(deg):
 
 
 # ===========================================================================
-# "In your voice" blurb — templated, short & sweet, house style rules
+# "In your voice" blurb -- templated, short & sweet, house style rules
 # ===========================================================================
 def build_voice_blurb(name, movement, dist_mi, compass, wind_mph, pressure_mb,
                        status_change, changes):
@@ -355,7 +354,7 @@ def build_voice_blurb(name, movement, dist_mi, compass, wind_mph, pressure_mb,
     else:
         parts.append("No new watches or warnings issued with this update.")
 
-    parts.append("We'll keep tracking closely! \U0001F300")
+    parts.append("We'll keep tracking closely!")
     return " ".join(parts)
 
 
@@ -377,8 +376,7 @@ def send_text(body: str, subject: str = "NHC Update"):
     smtp_server = os.environ["SMTP_SERVER"]
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
     smtp_user = os.environ["SMTP_USER"]
-    smtp_pass = os.environ["SMTP_PASS"]
-    to_addr = os.environ["ALERT_TO"]
+    smtp_pass = os.environ["SMTP_PASS"] to_addr = os.environ["ALERT_TO"]
 
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -399,14 +397,14 @@ def main():
 
     header = tcp_header(tcp_text)
     if not header:
-        print("Could not find a Public Advisory header — storm may be gone. Exiting quietly.")
+        print("Could not find a Public Advisory header - storm may be gone. Exiting quietly.")
         return
 
     advisory_num = header["number"]
     state = load_state()
 
     if state.get("last_advisory_number") == advisory_num:
-        print(f"No change — still advisory #{advisory_num}. Not sending an alert.")
+        print(f"No change - still advisory #{advisory_num}. Not sending an alert.")
         return
 
     # --- Parse TCP (comparison data) ---
@@ -470,7 +468,7 @@ def main():
         tcm_text = fetch(FORECAST_ADVISORY_URL)
         h = tcm_header(tcm_text)
         if h:
-            tcm_lines.append(f"Storm/Adv#: {h['name']} #{h['number']} \u00b7 {h['basin'] or ''}")
+            tcm_lines.append(f"Storm/Adv#: {h['name']} #{h['number']} - {h['basin'] or ''}")
         loc = tcm_location(tcm_text)
         ctime = tcm_center_time(tcm_text)
         if loc:
@@ -497,7 +495,7 @@ def main():
         if track:
             tcm_lines.append(f"Forecast track ({len(track)} pts):")
             for p in track:
-                note = f" \u00b7{p['note']}" if p["note"] else ""
+                note = f" -{p['note']}" if p["note"] else ""
                 tcm_lines.append(
                     f"  {p['local']}: {p['lat']}N {p['lon']}W{note} "
                     f"{with_mph(p['max_wind'])}/gust {with_mph(p['gusts'])}"
@@ -512,7 +510,7 @@ def main():
         positions = tcd_forecast_positions(tcd_text)
         if positions:
             for p in positions:
-                note = f" \u00b7{p['note']}" if p["note"] else ""
+                note = f" -{p['note']}" if p["note"] else ""
                 tcd_lines.append(
                     f"  {p['label']:>4} {p['local']}: {p['lat']}N {p['lon']}W{note} "
                     f"{p['kt']} kt/{p['mph']} mph"
