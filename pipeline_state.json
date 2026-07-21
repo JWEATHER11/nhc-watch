@@ -1,11 +1,11 @@
 {
-  "last_advisory_number": "10",
+  "last_advisory_number": "10A",
   "last": {
-    "number": "10",
+    "number": "10A",
     "status_and_name": "Tropical Storm Bertha",
-    "lat": 29.4,
-    "lon": -87.2,
+    "lat": 29.3,
+    "lon": -87.4,
     "wind_mph": 60,
-    "pressure_mb": 995
+    "pressure_mb": 997
   }
 }
