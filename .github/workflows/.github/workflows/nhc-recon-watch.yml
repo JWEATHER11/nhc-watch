@@ -1,0 +1,38 @@
+name: NHC Recon Watch
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run recon check
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
+        run: python check_recon.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "nhc-watch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add recon_state.json
+          git diff --quiet --cached || git commit -m "Update recon state [skip ci]"
+          git push
