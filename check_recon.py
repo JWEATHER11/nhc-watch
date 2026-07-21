@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-check_recon.py — Fetches the latest NHC recon Vortex Data Message (VDM),
+check_recon.py -- Fetches the latest NHC recon Vortex Data Message (VDM),
 decodes it (pressure, eye, winds in kt + mph, fix time in Central), compares
 it to the last-seen fix, and texts a summary via email-to-SMS if it's new.
 
-VDMs don't come on a fixed schedule like advisories do — recon only flies
+VDMs don't come on a fixed schedule like advisories do -- recon only flies
 when a plane is in the storm, so a fix might arrive every 45 min during an
 active mission and then nothing for hours between flights. This script dedupes
 on the VDM's own fix time (the "A." line) rather than a sequence number, so it
@@ -24,7 +24,7 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# CONFIG — change RECON_URL if this storm dissipates and a new one forms
+# CONFIG -- change RECON_URL if this storm dissipates and a new one forms
 # with a different Atlantic storm number (NT2 -> NT3, etc.)
 # ---------------------------------------------------------------------------
 RECON_URL = "https://www.nhc.noaa.gov/text/MIAREPNT2.shtml?text"
@@ -81,10 +81,7 @@ def extract_fix_time(text: str):
     if not m:
         return None
     zulu = m.group(1)
-    return {"zulu": zulu, "local": zulu_to_central(zulu) or zulu}
-
-
-def extract_central_pressure(text: str):
+    return {"zulu": zulu, "local": zulu_to_central(zulu) or zulu}def extract_central_pressure(text: str):
     m = re.search(r"^\s*D\.\s*(?:[A-Z]+\s+)*?(\d{3,4})\s*MB", text, re.I | re.M)
     if m:
         return f"{m.group(1)} mb"
@@ -105,7 +102,7 @@ def extract_eye(text: str):
     elif re.search(r"CLOSED|CIRCULAR|CONCENTRIC|RAGGED|ELLIPTICAL", line, re.I):
         status = "Closed"
     dia = re.search(r"(\d+)\s*NM", line, re.I)
-    return f"{status} \u00b7 {dia.group(1)} nm" if dia else status
+    return f"{status} - {dia.group(1)} nm" if dia else status
 
 
 def extract_center_location(text: str):
@@ -120,8 +117,8 @@ def extract_center_location(text: str):
         chunk, re.I | re.S,
     )
     if m2:
-        lat = f"{m2.group(1)}\u00b0{m2.group(2)}'{m2.group(3)}"
-        lon = f"{m2.group(4)}\u00b0{m2.group(5)}'{m2.group(6)}"
+        lat = f"{m2.group(1)}deg{m2.group(2)}'{m2.group(3)}"
+        lon = f"{m2.group(4)}deg{m2.group(5)}'{m2.group(6)}"
         return f"{lat}, {lon}"
 
     m3 = re.search(
@@ -129,7 +126,7 @@ def extract_center_location(text: str):
         chunk, re.I | re.S,
     )
     if m3:
-        return f"{m3.group(1)}\u00b0{m3.group(2)}, {m3.group(3)}\u00b0{m3.group(4)}"
+        return f"{m3.group(1)}deg{m3.group(2)}, {m3.group(3)}deg{m3.group(4)}"
 
     return None
 
@@ -167,8 +164,7 @@ def extract_aircraft(text: str):
 # ---------------------------------------------------------------------------
 def load_state():
     if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text())
-    return {}
+        return json.loads(STATE_FILE.read_text())return {}
 
 
 def save_state(state: dict):
@@ -204,13 +200,13 @@ def main():
 
     fix_time = extract_fix_time(text)
     if not fix_time:
-        print("No VDM fix time found on the page — likely no plane currently in the storm. Exiting quietly.")
+        print("No VDM fix time found on the page - likely no plane currently in the storm. Exiting quietly.")
         return
 
     state = load_state()
 
     if state.get("last_fix_zulu") == fix_time["zulu"]:
-        print(f"No new fix — still {fix_time['zulu']}. Not sending an alert.")
+        print(f"No new fix - still {fix_time['zulu']}. Not sending an alert.")
         return
 
     pressure = extract_central_pressure(text)
