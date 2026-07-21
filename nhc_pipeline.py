@@ -353,7 +353,8 @@ def build_bot_header(facts):
     if fb and fb.get("peak_mph"):
         lines.append(f"Peak forecast: {fb['peak_mph']} mph ({fb['peak_category']}) at {fb['peak_when']}")
     if facts.get("next_advisory"):
-        lines.append(f"{facts['next_advisory']}")
+        lines.append("")
+        lines.append(f"({facts['next_advisory']})")
     return "\n".join(lines)
 
 
@@ -413,13 +414,13 @@ House style rules, follow ALL of them:
 - No greeting -- lead straight into the update
 - 4-6 short sentences, forward-looking
 
-Cover, in this rough order, using ONLY the facts given:
-1. Current state & whether it looks organized/strengthening or ragged/weakening (based on the wind & pressure trend given)
-2. Short-term outlook (next ~24h) -- where it's headed
-3. Mid & long-term outlook -- peak intensity, what category, roughly when
-4. When it's expected to start weakening, if the facts show that
+Write EXACTLY two paragraphs, separated by one blank line:
 
-Do not invent numbers, locations, categories, or impacts not present in the facts. No hashtags. At most one relevant emoji if it fits naturally. Output ONLY the narrative paragraph, nothing else -- no headers, no bullet points, no preamble."""
+PARAGRAPH 1 (current state & why): current intensity, whether it looks organized/strengthening or ragged/weakening (based on the wind & pressure trend given), and what's driving any watch/warning changes right now.
+
+PARAGRAPH 2 (medium-to-long-term outlook): where it's headed, peak intensity/category and roughly when, and when it's expected to start weakening, if the facts show that.
+
+Do not invent numbers, locations, categories, or impacts not present in the facts. No hashtags. At most one relevant emoji if it fits naturally, in the second paragraph. Output ONLY the two paragraphs, nothing else -- no headers, no bullet points, no preamble."""
 
 
 def call_claude_api(facts_summary):
@@ -611,6 +612,8 @@ def main():
         parts.append("")
         parts.append("Key Messages:")
         for i, msg in enumerate(key_messages, 1):
+            if i > 1:
+                parts.append("")
             parts.append(f"{i}. {msg}")
     full_message = "\n".join(parts)
 
