@@ -2,26 +2,36 @@
 """
 nhc_pipeline.py -- Fully automated NHC advisory pipeline:
 
-  1. FETCH   -- Public Advisory (TCP) + Forecast/Advisory (TCM), from IEM's
+  1. FETCH   -- Public Advisory (TCP) + Discussion (TCD), from IEM's
                 text-product API first, falling back to NHC's own website
                 if IEM is unreachable.
   2. COMPARE -- against the last-seen advisory (position, wind, pressure,
-                status), using hard-coded math (no AI involved in this
-                step, for 100% accuracy).
-  3. CONVERT -- kt -> mph, Zulu -> Central time. Hard-coded, not AI, so
-                there's zero risk of a model inventing a wrong number.
-  4. REWRITE -- sends the structured facts (not raw NHC text) to the Claude
-                API, which writes a ready-to-post update in your voice for
-                a Gulf Coast / Beaumont TX audience.
-  5. DELIVER -- sends the finished post to Telegram if TELEGRAM_BOT_TOKEN
-                and TELEGRAM_CHAT_ID secrets are present; otherwise falls
-                back to the existing email-to-SMS delivery so the pipeline
-                is still fully testable before Telegram is set up. If
-                every attempt fails, sends a short plain-text failure
-                alert via whichever channel is available.
+                status), using hard-coded math (no AI involved, 100%
+                accuracy).
+  3. CONVERT -- kt -> mph, Zulu -> Central time, mph -> Saffir-Simpson
+                category. Hard-coded, not AI.
+  4. REWRITE -- sends structured facts (not raw NHC text) to the Claude
+                API, which writes ONLY the narrative paragraph -- current
+                state, organization/trend, short/mid/long-term outlook,
+                peak timing, weakening timing -- in your voice. The
+                surrounding data header and NHC's own Key Messages are
+                assembled by plain code, not AI, so those are always
+                exactly what NHC said.
+  5. DELIVER -- sends the finished message to Telegram if configured,
+                otherwise falls back to email-to-SMS. Failure alerts go
+                out the same way.
 
-State (last-seen advisory + position/wind/pressure) lives in state.json and
-is committed back by the GitHub Actions workflow after each run.
+Message structure (bot header + AI narrative + bot footer):
+  [Storm/Advisory#, current stats -- all hard-coded]
+  [1 paragraph AI-written narrative]
+  [NHC's own Key Messages, verbatim from the Discussion product]
+
+To pause this entirely during quiet weeks: go to this repo's Actions tab,
+click "NHC Pipeline (IEM + Claude Rewrite)" in the left sidebar, click the
+"..." menu, click "Disable workflow." Click "Enable workflow" the same way
+to turn it back on. No code or secrets need to change either way.
+
+State lives in pipeline_state.json, committed back by the workflow.
 """
 
 import json
@@ -46,7 +56,7 @@ STORM_PIL_SUFFIX = "AT2"
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
 NHC_URLS = {
     "TCP": f"https://www.nhc.noaa.gov/text/MIATCP{STORM_PIL_SUFFIX}.shtml?text",
-    "TCM": f"https://www.nhc.noaa.gov/text/MIATCM{STORM_PIL_SUFFIX}.shtml?text",
+    "TCD": f"https://www.nhc.noaa.gov/text/MIATCD{STORM_PIL_SUFFIX}.shtml?text",
 }
 
 STATE_FILE = Path(__file__).parent / "pipeline_state.json"
@@ -59,6 +69,12 @@ MONTHS = {
 
 MAX_ATTEMPTS = 3
 RETRY_DELAY_SEC = 5
+
+# Bands for short/mid/long-term forecast grouping, keyed by NHC's own
+# H-offset labels from the Discussion product's forecast table.
+SHORT_TERM_LABELS = {"INIT", "12H", "24H"}
+MID_TERM_LABELS = {"36H", "48H", "60H", "72H"}
+LONG_TERM_LABELS = {"96H", "120H"}
 
 
 # ===========================================================================
@@ -103,14 +119,28 @@ def fetch_product(product_type):
 
 
 # ===========================================================================
-# Shared unit / time helpers (hard-coded conversions -- no AI, no error risk)
+# Shared unit / time / category helpers (hard-coded -- no AI, no error risk)
 # ===========================================================================
 def kt_to_mph(kt):
     return round(kt * 1.15078)
 
 
-def with_mph(kt):
-    return f"{kt:g} kt ({kt_to_mph(kt)} mph)"
+def wind_category(mph):
+    if mph is None:
+        return None
+    if mph < 39:
+        return "Tropical Depression"
+    if mph < 74:
+        return "Tropical Storm"
+    if mph < 96:
+        return "Category 1 Hurricane"
+    if mph < 111:
+        return "Category 2 Hurricane"
+    if mph < 130:
+        return "Category 3 Hurricane"
+    if mph < 157:
+        return "Category 4 Hurricane"
+    return "Category 5 Hurricane"
 
 
 def zulu_to_central(zstr):
@@ -128,16 +158,13 @@ def zulu_to_central(zstr):
 
 
 # ===========================================================================
-# TCP -- Public/Intermediate Advisory (drives dedupe + comparison)
+# TCP -- Public/Intermediate Advisory (drives dedupe + comparison + header)
 # ===========================================================================
 def tcp_header(text):
     m = re.search(r"^(.+?)\s+(Intermediate\s+)?Advisory Number\s+(\S+)", text, re.I | re.M)
     if not m:
         return None
-    return {
-        "status_and_name": m.group(1).strip(),
-        "number": m.group(3).rstrip("."),
-    }
+    return {"status_and_name": m.group(1).strip(), "number": m.group(3).rstrip(".")}
 
 
 def tcp_location(text):
@@ -186,30 +213,89 @@ def tcp_next_advisory(text):
 
 
 # ===========================================================================
-# TCM -- Forecast/Advisory (peak forecast wind)
+# TCD -- Discussion product: forecast positions table (with clean short/mid/
+# long-term H-offset labels) + NHC's own Key Messages
 # ===========================================================================
-def tcm_forecast_track(text):
+def tcd_forecast_positions(text):
     pattern = re.compile(
-        r"(FORECAST|OUTLOOK)\s+VALID\s+(\d{1,2}/\d{4}Z)\s+(\d{1,3}\.?\d*)N\s+(\d{1,3}\.?\d*)W([^\n]*)\n\s*MAX WIND\s+(\d{1,3})\s*KT\.\.\.GUSTS\s+(\d{1,3})\s*KT",
-        re.I,
+        r"^\s*(INIT|\d{1,3}H)\s+(\d{1,2}/\d{4}Z)\s+(\d{1,3}\.?\d*)N\s+(\d{1,3}\.?\d*)W\s+"
+        r"(\d{1,3})\s*KT\s+(\d{1,3})\s*MPH(?:\.\.\.([A-Z /-]+))?\s*$",
+        re.I | re.M,
     )
-    points = []
+    rows = []
     for m in pattern.finditer(text):
-        points.append({
+        mph = int(m.group(6))
+        rows.append({
+            "label": m.group(1).upper(),
             "local": zulu_to_central(m.group(2)) or m.group(2),
-            "max_wind": int(m.group(6)), "gusts": int(m.group(7)),
+            "lat": m.group(3), "lon": m.group(4),
+            "kt": int(m.group(5)), "mph": mph,
+            "category": wind_category(mph),
+            "note": (m.group(7) or "").strip(),
         })
-    return points
+    return rows
 
 
-def tcm_peak_wind(points):
-    if not points:
+def tcd_key_messages(text):
+    m = re.search(r"Key Messages:\s*\n+(.*?)\n\s*\n\s*(?:FORECAST POSITIONS|\$\$)", text, re.I | re.S)
+    if not m:
+        return []
+    block = m.group(1)
+    # Each message is a numbered item; split on "N." at line starts
+    items = re.split(r"\n\s*\n(?=\d+\.)", block.strip())
+    cleaned = []
+    for item in items:
+        item = re.sub(r"^\d+\.\s*", "", item.strip())
+        item = re.sub(r"\s+", " ", item).strip()
+        if item:
+            cleaned.append(item)
+    return cleaned
+
+
+def summarize_forecast_bands(positions, current_mph):
+    if not positions:
         return None
-    peak = max(points, key=lambda p: p["max_wind"])
+
+    def band_for(label):
+        if label in SHORT_TERM_LABELS:
+            return "short"
+        if label in MID_TERM_LABELS:
+            return "mid"
+        if label in LONG_TERM_LABELS:
+            return "long"
+        return None
+
+    bands = {"short": [], "mid": [], "long": []}
+    for p in positions:
+        b = band_for(p["label"])
+        if b:
+            bands[b].append(p)
+
+    peak = max(positions, key=lambda p: p["mph"])
+    peak_idx = positions.index(peak)
+    weakening = None
+    for p in positions[peak_idx + 1:]:
+        if p["mph"] < peak["mph"]:
+            weakening = p
+            break
+
+    def band_desc(pts):
+        if not pts:
+            return None
+        return ", ".join(f"{p['label']} ({p['local']}): {p['mph']} mph {p['category']}{' - ' + p['note'] if p['note'] else ''}" for p in pts)
+
     return {
-        "mph": kt_to_mph(peak["max_wind"]),
-        "gust_mph": kt_to_mph(peak["gusts"]),
-        "when": peak["local"],
+        "current_category": wind_category(current_mph),
+        "peak_mph": peak["mph"],
+        "peak_category": peak["category"],
+        "peak_when": peak["local"],
+        "peak_note": peak["note"],
+        "weakening_starts": weakening["local"] if weakening else None,
+        "weakening_to_mph": weakening["mph"] if weakening else None,
+        "weakening_to_category": weakening["category"] if weakening else None,
+        "short_term": band_desc(bands["short"]),
+        "mid_term": band_desc(bands["mid"]),
+        "long_term": band_desc(bands["long"]),
     }
 
 
@@ -250,12 +336,36 @@ def save_state(state):
 
 
 # ===========================================================================
-# Claude API -- rewrites structured facts into a ready-to-post update. This
-# is the ONLY step touching an LLM; every number came from hard-coded
-# parsing/math above, so the AI can only get wording wrong, never a fact.
+# Bot-written header (deterministic, no AI) -- exactly what you asked for:
+# the structured facts up top, same style as the decoder tool.
+# ===========================================================================
+def build_bot_header(facts):
+    lines = [f"{facts['name']} -- Advisory #{facts['advisory_num']}"]
+    if facts.get("current_category"):
+        lines.append(f"Category: {facts['current_category']}")
+    if facts.get("movement"):
+        lines.append(f"Movement: {facts['movement']}")
+    if facts.get("wind_mph") is not None:
+        lines.append(f"Sustained wind: {facts['wind_mph']} mph")
+    if facts.get("pressure_mb") is not None:
+        lines.append(f"Min pressure: {facts['pressure_mb']} mb")
+    fb = facts.get("forecast_bands")
+    if fb and fb.get("peak_mph"):
+        lines.append(f"Peak forecast: {fb['peak_mph']} mph ({fb['peak_category']}) at {fb['peak_when']}")
+    if facts.get("next_advisory"):
+        lines.append(f"{facts['next_advisory']}")
+    return "\n".join(lines)
+
+
+# ===========================================================================
+# Claude API -- writes ONLY the narrative paragraph from structured facts.
+# Every number came from hard-coded parsing/math above, so the AI can only
+# get wording wrong, never a fact.
 # ===========================================================================
 def build_facts_summary(facts):
-    lines = [f"Storm: {facts['name']}", f"Advisory #: {facts['advisory_num']}"]
+    lines = [f"Storm: {facts['name']}"]
+    if facts.get("current_category"):
+        lines.append(f"Current category: {facts['current_category']}")
     if facts.get("movement"):
         lines.append(f"Movement: {facts['movement']}")
     if facts.get("wind_mph") is not None:
@@ -267,50 +377,64 @@ def build_facts_summary(facts):
     if facts.get("status_change"):
         lines.append(f"Status change: {facts['status_change']}")
     if facts.get("wind_change_mph") is not None:
-        lines.append(f"Wind change vs last advisory: {facts['wind_change_mph']:+d} mph")
+        trend = "strengthening" if facts["wind_change_mph"] > 0 else ("weakening" if facts["wind_change_mph"] < 0 else "holding steady")
+        lines.append(f"Wind trend vs last advisory: {facts['wind_change_mph']:+d} mph ({trend})")
     if facts.get("pressure_change_mb") is not None:
-        lines.append(f"Pressure change vs last advisory: {facts['pressure_change_mb']:+d} mb")
+        lines.append(f"Pressure trend vs last advisory: {facts['pressure_change_mb']:+d} mb")
     if facts.get("nhc_changes"):
         lines.append(f"NHC-stated changes this advisory: {facts['nhc_changes']}")
-    if facts.get("peak_forecast"):
-        pf = facts["peak_forecast"]
-        lines.append(f"Peak forecast intensity: {pf['mph']} mph sustained, gusts {pf['gust_mph']} mph, expected {pf['when']}")
-    if facts.get("next_advisory"):
-        lines.append(f"Next advisory: {facts['next_advisory']}")
+
+    fb = facts.get("forecast_bands")
+    if fb:
+        if fb.get("short_term"):
+            lines.append(f"Short-term forecast (next ~24h): {fb['short_term']}")
+        if fb.get("mid_term"):
+            lines.append(f"Mid-term forecast (1.5-3 days): {fb['mid_term']}")
+        if fb.get("long_term"):
+            lines.append(f"Long-term outlook (4-5 days, lower confidence): {fb['long_term']}")
+        if fb.get("peak_mph"):
+            lines.append(f"Peak forecast intensity: {fb['peak_mph']} mph ({fb['peak_category']}), expected {fb['peak_when']}" + (f" ({fb['peak_note']})" if fb.get("peak_note") else ""))
+        if fb.get("weakening_starts"):
+            lines.append(f"Weakening trend begins by: {fb['weakening_starts']}, dropping to {fb['weakening_to_mph']} mph ({fb['weakening_to_category']})")
+        else:
+            lines.append("Weakening trend: not yet showing in the forecast (still intensifying or holding through the available forecast)")
+
     return "\n".join(lines)
 
 
-VOICE_SYSTEM_PROMPT = """You write short weather-update posts for a Gulf Coast / Southeast Texas (Beaumont, SETX/SWLA) audience, in the voice of a local broadcast meteorologist. House style rules, follow ALL of them:
+VOICE_SYSTEM_PROMPT = """You write the narrative portion of a weather update for a Gulf Coast / Southeast Texas (Beaumont, SETX/SWLA) audience, in the voice of a local broadcast meteorologist. This narrative gets inserted between a data header and NHC's official Key Messages, so do NOT repeat raw numbers that would already be in a header (advisory number) -- focus on telling the STORY of the storm using the facts given.
 
+House style rules, follow ALL of them:
 - Use "&" instead of "and" -- no comma before "&"
 - No comma before "but" or "or" either
 - No Oxford comma anywhere
 - Capitalize "Tropical" / "Tropics" always
 - Confident, calm, conversational tone -- collective "we"
 - No greeting -- lead straight into the update
-- 2-4 short sentences, forward-looking
-- Use only the facts given below -- do not invent numbers, locations, or impacts not present in the facts
-- No hashtags. At most one relevant emoji if it fits naturally
-- Output ONLY the post text, nothing else"""
+- 4-6 short sentences, forward-looking
+
+Cover, in this rough order, using ONLY the facts given:
+1. Current state & whether it looks organized/strengthening or ragged/weakening (based on the wind & pressure trend given)
+2. Short-term outlook (next ~24h) -- where it's headed
+3. Mid & long-term outlook -- peak intensity, what category, roughly when
+4. When it's expected to start weakening, if the facts show that
+
+Do not invent numbers, locations, categories, or impacts not present in the facts. No hashtags. At most one relevant emoji if it fits naturally. Output ONLY the narrative paragraph, nothing else -- no headers, no bullet points, no preamble."""
 
 
 def call_claude_api(facts_summary):
     api_key = os.environ["ANTHROPIC_API_KEY"]
     payload = json.dumps({
         "model": "claude-sonnet-5",
-        "max_tokens": 400,
+        "max_tokens": 500,
         "system": VOICE_SYSTEM_PROMPT,
-        "messages": [{"role": "user", "content": f"Write the update post from these facts:\n\n{facts_summary}"}],
+        "messages": [{"role": "user", "content": f"Write the narrative from these facts:\n\n{facts_summary}"}],
     }).encode("utf-8")
 
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
         data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
+        headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
         method="POST",
     )
 
@@ -336,8 +460,7 @@ def call_claude_api(facts_summary):
 
 
 # ===========================================================================
-# Delivery -- Telegram if configured, else fall back to email-to-SMS so the
-# whole pipeline is testable before Telegram is set up.
+# Delivery
 # ===========================================================================
 def telegram_configured():
     return bool(os.environ.get("TELEGRAM_BOT_TOKEN")) and bool(os.environ.get("TELEGRAM_CHAT_ID"))
@@ -432,16 +555,14 @@ def main():
 
     movement_str = None
     if movement:
-        if movement.get("stationary"):
-            movement_str = "stationary"
-        else:
-            movement_str = f"{movement['compass']} ({movement['degrees']} deg) at {movement['mph']} mph"
+        movement_str = "stationary" if movement.get("stationary") else f"{movement['compass']} ({movement['degrees']} deg) at {movement['mph']} mph"
 
     facts = {
         "name": header["status_and_name"],
         "advisory_num": advisory_num,
         "movement": movement_str,
         "wind_mph": wind_mph,
+        "current_category": wind_category(wind_mph),
         "pressure_mb": pressure_mb,
         "nhc_changes": nhc_changes,
         "next_advisory": next_advisory,
@@ -457,37 +578,46 @@ def main():
 
         if prev.get("status_and_name") and prev["status_and_name"] != header["status_and_name"]:
             facts["status_change"] = f"{prev['status_and_name']} -> {header['status_and_name']}"
-
         if prev.get("wind_mph") is not None and wind_mph is not None:
             facts["wind_change_mph"] = wind_mph - prev["wind_mph"]
-
         if prev.get("pressure_mb") is not None and pressure_mb is not None:
             facts["pressure_change_mb"] = pressure_mb - prev["pressure_mb"]
 
+    key_messages = []
     try:
-        tcm_text, tcm_source = fetch_product("TCM")
-        if tcm_text:
-            print(f"TCM fetched from {tcm_source}")
-            track = tcm_forecast_track(tcm_text)
-            peak = tcm_peak_wind(track)
-            if peak:
-                facts["peak_forecast"] = peak
+        tcd_text, tcd_source = fetch_product("TCD")
+        if tcd_text:
+            print(f"TCD fetched from {tcd_source}")
+            positions = tcd_forecast_positions(tcd_text)
+            bands = summarize_forecast_bands(positions, wind_mph)
+            if bands:
+                facts["forecast_bands"] = bands
+            key_messages = tcd_key_messages(tcd_text)
     except Exception as e:
-        print(f"Peak forecast wind unavailable (non-fatal): {e}")
+        print(f"Discussion product unavailable (non-fatal): {e}")
 
+    bot_header = build_bot_header(facts)
     facts_summary = build_facts_summary(facts)
     print(f"Facts for Claude:\n{facts_summary}")
 
     try:
-        post_text = call_claude_api(facts_summary)
+        narrative = call_claude_api(facts_summary)
     except Exception as e:
         send_failure_alert("Claude API rewrite step", str(e))
         sys.exit(1)
 
-    print(f"Generated post:\n{post_text}")
+    parts = [bot_header, "", narrative]
+    if key_messages:
+        parts.append("")
+        parts.append("Key Messages:")
+        for i, msg in enumerate(key_messages, 1):
+            parts.append(f"{i}. {msg}")
+    full_message = "\n".join(parts)
+
+    print(f"Full message:\n{full_message}")
 
     try:
-        deliver(post_text, subject=f"{header['status_and_name']} Adv #{advisory_num}")
+        deliver(full_message, subject=f"{header['status_and_name']} Adv #{advisory_num}")
     except Exception as e:
         send_failure_alert("Delivery", str(e))
         sys.exit(1)
