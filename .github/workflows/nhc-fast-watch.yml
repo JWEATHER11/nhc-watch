@@ -1,0 +1,54 @@
+name: NHC Fast Watch (Continuous)
+
+on:
+  schedule:
+    # Safety net only -- fires every 6h in case the self-restart chain ever
+    # breaks (e.g. a runner failure kills a job before it can trigger the
+    # next one). Under normal operation, the loop keeps itself running
+    # continuously and this trigger does nothing since a job is already
+    # active (see concurrency block below).
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: nhc-fast-watch
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run continuous polling loop
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python nhc_fast_loop.py
+
+      - name: Final state commit (safety net)
+        if: always()
+        run: |
+          git config user.name "nhc-fast-watch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add pipeline_state.json
+          git diff --quiet --cached || git commit -m "Update pipeline state [skip ci]"
+          git push || true
