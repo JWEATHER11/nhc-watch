@@ -9,16 +9,16 @@ check_storm.py -- Fetches TWO NHC products for the storm:
   2. The Forecast/Advisory (TCM) -- used for the full field-by-field technical
      breakdown, including the multi-day forecast track table.
 
-...then builds ONE text message with three parts, in this order:
+...then builds a set of texts covering three parts:
   A) A short templated "in your voice" blurb -- what changed, where it's
      headed, kept tight
   B) The distance/direction/speed-since-last-advisory comparison
   C) The full technical breakdown (every field, plus the forecast track)
 
-This message will typically run 1,000+ characters. SMS gateways often
-truncate or split long messages -- that's a known, accepted tradeoff here
-(the alternative was splitting this across text + email, which was decided
-against in favor of one message).
+Verizon's email-to-SMS gateway silently truncates long messages instead of
+sending them as proper multi-part texts, so this script splits everything
+into several short, numbered texts ("(1/7)", "(2/7)", etc.) instead of one
+long message, so all the info actually arrives on your phone.
 
 State (last TCP advisory number + position/status/wind/pressure/time) lives
 in state.json and is committed back by the GitHub Actions workflow.
@@ -35,16 +35,12 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# CONFIG -- change these if this storm dissipates and a new one forms with a
-# different Atlantic storm number (AT2 -> AT3, etc.)
-# ---------------------------------------------------------------------------
 PUBLIC_ADVISORY_URL = "https://www.nhc.noaa.gov/text/MIATCPAT2.shtml?text"
 FORECAST_ADVISORY_URL = "https://www.nhc.noaa.gov/text/MIATCMAT2.shtml?text"
 DISCUSSION_URL = "https://www.nhc.noaa.gov/text/MIATCDAT2.shtml?text"
 
 STATE_FILE = Path(__file__).parent / "state.json"
-CENTRAL_UTC_OFFSET = 5  # CDT (UTC-5). Change to 6 for CST (winter).
+CENTRAL_UTC_OFFSET = 5
 
 MONTHS = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -52,18 +48,12 @@ MONTHS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Fetch
-# ---------------------------------------------------------------------------
 def fetch(url: str) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": "nhc-watch/1.0"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read().decode("utf-8", errors="replace")
 
 
-# ---------------------------------------------------------------------------
-# Shared unit / time helpers
-# ---------------------------------------------------------------------------
 def kt_to_mph(kt: float) -> int:
     return round(kt * 1.15078)
 
@@ -86,9 +76,6 @@ def zulu_to_central(zstr: str):
     return f"{hour12}:{minute:02d} {period} CDT, day {day}"
 
 
-# ===========================================================================
-# TCP -- Public/Intermediate Advisory (drives dedupe + comparison)
-# ===========================================================================
 def tcp_header(text: str):
     m = re.search(r"^(.+?)\s+(Intermediate\s+)?Advisory Number\s+(\S+)", text, re.I | re.M)
     if not m:
@@ -168,9 +155,6 @@ def tcp_next_advisory(text: str):
     return m.group(0).strip() if m else None
 
 
-# ===========================================================================
-# TCM -- Forecast/Advisory (drives the full field breakdown)
-# ===========================================================================
 def tcm_header(text: str):
     m = re.search(r"^\s*(.+?)\s+FORECAST/ADVISORY NUMBER\s+(\S+)", text, re.I | re.M)
     if not m:
@@ -181,8 +165,6 @@ def tcm_header(text: str):
 
 
 def tcm_location(text: str):
-    # TCM format: "TROPICAL DEPRESSION CENTER LOCATED NEAR 27.5N 85.0W AT 19/2100Z"
-    # (no lettered fields in this product -- that's the VDM format, different product)
     m = re.search(
         r"LOCATED\s+NEAR\s+(\d{1,3}\.?\d*)N\s+(\d{1,3}\.?\d*)W\s+AT\s+(\d{1,2}/\d{4}Z)",
         text, re.I,
@@ -271,11 +253,6 @@ def tcm_peak_wind(points):
     return f"{with_mph(peak['max_wind'])} sustained, gusts {with_mph(peak['gusts'])} (at {peak['local']})"
 
 
-# ===========================================================================
-# TCD -- Discussion product's "FORECAST POSITIONS AND MAX WINDS" table
-# Cleaner than the TCM track: already has both kt and mph, and uses simple
-# H-offset labels (INIT, 12H, 24H...) instead of full Zulu valid times.
-# ===========================================================================
 def tcd_forecast_positions(text: str):
     pattern = re.compile(
         r"^\s*(INIT|\d{1,3}H)\s+(\d{1,2}/\d{4}Z)\s+(\d{1,3}\.?\d*)N\s+(\d{1,3}\.?\d*)W\s+"
@@ -296,9 +273,6 @@ def tcd_forecast_positions(text: str):
     return rows
 
 
-# ===========================================================================
-# Distance / bearing between two fixes
-# ===========================================================================
 def haversine_nm(lat1, lon1, lat2, lon2):
     R = 3440.065
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -321,9 +295,6 @@ def bearing_to_compass(deg):
     return dirs[round(deg / 22.5) % 16]
 
 
-# ===========================================================================
-# "In your voice" blurb -- templated, short & sweet, house style rules
-# ===========================================================================
 def build_voice_blurb(name, movement, dist_mi, compass, wind_mph, pressure_mb,
                        status_change, changes):
     parts = []
@@ -359,9 +330,6 @@ def build_voice_blurb(name, movement, dist_mi, compass, wind_mph, pressure_mb,
     return " ".join(parts)
 
 
-# ===========================================================================
-# State
-# ===========================================================================
 def load_state():
     return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
 
@@ -370,15 +338,11 @@ def save_state(state: dict):
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
-# ===========================================================================
-# Email-to-SMS
-# ===========================================================================
-def send_text(body: str, subject: str = "NHC Update"):
+def send_message(body: str, to_addr: str, subject: str = "NHC Update"):
     smtp_server = os.environ["SMTP_SERVER"]
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
     smtp_user = os.environ["SMTP_USER"]
     smtp_pass = os.environ["SMTP_PASS"]
-    to_addr = os.environ["ALERT_TO"]
 
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -391,9 +355,6 @@ def send_text(body: str, subject: str = "NHC Update"):
         server.sendmail(smtp_user, [to_addr], msg.as_string())
 
 
-# ===========================================================================
-# Main
-# ===========================================================================
 def main():
     tcp_text = fetch(PUBLIC_ADVISORY_URL)
 
@@ -409,7 +370,6 @@ def main():
         print(f"No change - still advisory #{advisory_num}. Not sending an alert.")
         return
 
-    # --- Parse TCP (comparison data) ---
     location = tcp_location(tcp_text)
     wind_mph = tcp_wind_mph(tcp_text)
     movement = tcp_movement(tcp_text)
@@ -458,13 +418,11 @@ def main():
     else:
         comparison_lines.append("NHC changes: None noted this advisory")
 
-    # --- Voice blurb ---
     voice = build_voice_blurb(
         header["status_and_name"], movement, dist_mi, compass,
         wind_mph, pressure_mb, status_change_text, changes,
     )
 
-    # --- Parse TCM (full technical breakdown) ---
     tcm_lines = []
     try:
         tcm_text = fetch(FORECAST_ADVISORY_URL)
@@ -505,7 +463,6 @@ def main():
     except Exception as e:
         tcm_lines.append(f"(Forecast/Advisory detail unavailable: {e})")
 
-    # --- Parse TCD (Discussion product's forecast positions table) ---
     tcd_lines = []
     try:
         tcd_text = fetch(DISCUSSION_URL)
@@ -520,7 +477,6 @@ def main():
     except Exception as e:
         tcd_lines.append(f"(Forecast positions unavailable: {e})")
 
-    # --- Assemble the one big message ---
     body_parts = [
         voice,
         "",
@@ -535,13 +491,37 @@ def main():
     if next_adv_tcp:
         body_parts.append(next_adv_tcp)
 
-    body = "\n".join(body_parts)
-    print(f"Sending alert ({len(body)} chars):\n" + body)
+    full_body = "\n".join(body_parts)
+    print(f"Full message ({len(full_body)} chars):\n" + full_body)
 
-    try:
-        send_text(body, subject=f"{header['status_and_name']} Adv #{advisory_num}")
-    except Exception as e:
-        print(f"Failed to send text: {e}", file=sys.stderr)
+    CHUNK_SIZE = 140
+    words = full_body.split(" ")
+    chunks = []
+    current = ""
+    for word in words:
+        candidate = (current + " " + word).strip() if current else word
+        if len(candidate) > CHUNK_SIZE and current:
+            chunks.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+
+    alert_to = os.environ["ALERT_TO"]
+    total = len(chunks)
+    any_failed = False
+    for i, chunk in enumerate(chunks, start=1):
+        part_label = f"({i}/{total}) " if total > 1 else ""
+        part_body = part_label + chunk
+        try:
+            send_message(part_body, alert_to, subject=f"{header['status_and_name']} Adv #{advisory_num}")
+            print(f"Sent part {i}/{total} ({len(part_body)} chars)")
+        except Exception as e:
+            print(f"Failed to send part {i}/{total}: {e}", file=sys.stderr)
+            any_failed = True
+
+    if any_failed:
         sys.exit(1)
 
     new_last = {"number": advisory_num, "status_and_name": header["status_and_name"]}
