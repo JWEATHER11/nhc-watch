@@ -187,7 +187,8 @@ def tcm_location(text: str):
         r"LOCATED\s+NEAR\s+(\d{1,3}\.?\d*)N\s+(\d{1,3}\.?\d*)W\s+AT\s+(\d{1,2}/\d{4}Z)",
         text, re.I,
     )
-    if not m: return None
+    if not m:
+        return None
     return f"{m.group(1)}degN, {m.group(2)}degW"
 
 
@@ -376,7 +377,8 @@ def send_text(body: str, subject: str = "NHC Update"):
     smtp_server = os.environ["SMTP_SERVER"]
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
     smtp_user = os.environ["SMTP_USER"]
-    smtp_pass = os.environ["SMTP_PASS"] to_addr = os.environ["ALERT_TO"]
+    smtp_pass = os.environ["SMTP_PASS"]
+    to_addr = os.environ["ALERT_TO"]
 
     msg = MIMEText(body)
     msg["Subject"] = subject
