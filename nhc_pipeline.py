@@ -490,6 +490,43 @@ def send_telegram(text):
     raise RuntimeError(f"Telegram send failed after {MAX_ATTEMPTS} attempts: {last_err}")
 
 
+# ===========================================================================
+# NHC cone graphic -- official static URL pattern confirmed from NWS Service
+# Change Notice 26-27 (2026): storm_graphics/BBXX/CCXXYYYY_5day_cone.png
+# ===========================================================================
+def build_cone_url():
+    basin = STORM_PIL_SUFFIX[:2].upper()  # "AT", "EP", or "CP"
+    num = STORM_PIL_SUFFIX[2:].zfill(2)   # e.g. "2" -> "02"
+    basin_file_code = "AL" if basin == "AT" else basin  # Atlantic dir is AT, filename code is AL
+    year = datetime.utcnow().year
+    return f"https://www.nhc.noaa.gov/storm_graphics/{basin}{num}/{basin_file_code}{num}{year}_5day_cone.png"
+
+
+def send_telegram_photo(photo_url, caption=""):
+    bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    payload = json.dumps({"chat_id": chat_id, "photo": photo_url, "caption": caption[:1024]}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+
+    last_err = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                if result.get("ok"):
+                    return
+                last_err = result.get("description", "Unknown Telegram error")
+        except Exception as e:
+            last_err = str(e)
+        print(f"[Telegram photo] Attempt {attempt} failed: {last_err}")
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_DELAY_SEC)
+    # Non-fatal -- if the photo fails (e.g. graphic not published yet this
+    # advisory), we still want the text update to go out.
+    print(f"Cone graphic send failed after {MAX_ATTEMPTS} attempts (non-fatal): {last_err}")
+
+
 def send_email_sms_fallback(text, subject="NHC Update"):
     smtp_server = os.environ["SMTP_SERVER"]
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
@@ -618,6 +655,10 @@ def main():
     full_message = "\n".join(parts)
 
     print(f"Full message:\n{full_message}")
+
+    if telegram_configured():
+        cone_url = build_cone_url()
+        send_telegram_photo(cone_url, caption=f"{facts['name']} -- 5-Day Cone (Advisory #{advisory_num})")
 
     try:
         deliver(full_message, subject=f"{header['status_and_name']} Adv #{advisory_num}")
