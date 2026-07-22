@@ -351,30 +351,28 @@ def main():
         save_json(STATE_FILE, state)
         return
 
-    facts_lines = [f"Signal type: {signal_type}", alert_reason]
-    if aircraft:
-        facts_lines.append(f"Aircraft: {aircraft}")
+    if signal_type == "strengthening":
+        header = "RECON SIGNAL: GETTING STRONGER"
+    else:
+        header = "RECON SIGNAL: GETTING WEAKER"
+
+    body_lines = [alert_reason]
     if storm_name or official_name:
-        facts_lines.append(f"Storm: {storm_name or official_name}")
+        body_lines.append(f"Storm: {storm_name or official_name}")
+    if aircraft:
+        body_lines.append(f"Aircraft: {aircraft}")
+    body_lines.append("")
     if official_wind_mph is not None:
-        facts_lines.append(f"NHC official current wind: {official_wind_mph} mph")
+        body_lines.append(f"NHC official current wind: {official_wind_mph} mph")
     if official_pressure_mb is not None:
-        facts_lines.append(f"NHC official current pressure: {official_pressure_mb} mb")
+        body_lines.append(f"NHC official current pressure: {official_pressure_mb} mb")
+    body_lines.append("")
     if batch_wind_mph is not None:
-        facts_lines.append(f"Recon peak wind this batch: {batch_wind_mph} mph at {latest_time}")
+        body_lines.append(f"Recon just found: {batch_wind_mph} mph wind at {latest_time}")
     if batch_min_pressure_mb is not None:
-        facts_lines.append(f"Recon minimum pressure this batch: {batch_min_pressure_mb:.1f} mb at {latest_time}")
-    facts_summary = "\n".join(facts_lines)
-    print(f"Alert-worthy signal found:\n{facts_summary}")
+        body_lines.append(f"Recon just found: {batch_min_pressure_mb:.1f} mb pressure at {latest_time}")
 
-    try:
-        narrative = call_claude_api(facts_summary)
-    except Exception as e:
-        send_failure_alert("Claude API rewrite step", str(e))
-        sys.exit(1)
-
-    header = "Recon Signal: Strengthening" if signal_type == "strengthening" else "Recon Signal: Weakening"
-    full_message = f"{header}\n\n{narrative}"
+    full_message = f"{header}\n\n" + "\n".join(body_lines)
     print(f"Full message:\n{full_message}")
 
     try:
