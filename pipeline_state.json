@@ -1,15 +1,15 @@
 {
   "pending_cone_verification": {
-    "advisory_num": "11",
-    "queued_at": 1784698290.1452935
+    "advisory_num": "11A",
+    "queued_at": 1784698520.153663
   },
-  "last_advisory_number": "11",
+  "last_advisory_number": "11A",
   "last": {
-    "number": "11",
+    "number": "11A",
     "status_and_name": "Tropical Storm Bertha",
-    "lat": 29.4,
-    "lon": -87.7,
-    "wind_mph": 60,
-    "pressure_mb": 995
+    "lat": 29.3,
+    "lon": -87.9,
+    "wind_mph": 50,
+    "pressure_mb": 998
   }
 }
