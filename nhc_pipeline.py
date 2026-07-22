@@ -372,6 +372,15 @@ def build_bot_header(facts):
         lines.append(f"Sustained wind: {facts['wind_mph']} mph")
     if facts.get("pressure_mb") is not None:
         lines.append(f"Min pressure: {facts['pressure_mb']} mb")
+    if facts.get("wind_change_mph") is not None:
+        wc = facts["wind_change_mph"]
+        trend = "strengthened" if wc > 0 else ("weakened" if wc < 0 else "held steady")
+        lines.append(f"Wind vs previous advisory: {wc:+d} mph ({trend})")
+    if facts.get("pressure_change_mb") is not None:
+        pc = facts["pressure_change_mb"]
+        # Falling pressure = strengthening; rising pressure = weakening
+        trend = "strengthening signal" if pc < 0 else ("weakening signal" if pc > 0 else "steady")
+        lines.append(f"Pressure vs previous advisory: {pc:+d} mb ({trend})")
     fb = facts.get("forecast_bands")
     if fb and fb.get("peak_mph"):
         peak_when_clean = fb['peak_when'].replace(" CDT", "").replace(" CST", "")
