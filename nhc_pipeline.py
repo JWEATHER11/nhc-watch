@@ -374,10 +374,12 @@ def build_bot_header(facts):
         lines.append(f"Min pressure: {facts['pressure_mb']} mb")
     fb = facts.get("forecast_bands")
     if fb and fb.get("peak_mph"):
-        lines.append(f"Peak forecast: {fb['peak_mph']} mph ({fb['peak_category']}) at {fb['peak_when']}")
+        peak_when_clean = fb['peak_when'].replace(" CDT", "").replace(" CST", "")
+        lines.append(f"Peak forecast: {fb['peak_mph']} mph ({fb['peak_category']}) at {peak_when_clean}")
     if facts.get("next_advisory"):
+        next_advisory_clean = facts['next_advisory'].replace(" CDT", "").replace(" CST", "")
         lines.append("")
-        lines.append(f"({facts['next_advisory']})")
+        lines.append(f"({next_advisory_clean})")
     return "\n".join(lines)
 
 
@@ -637,7 +639,7 @@ def main():
 
     movement_str = None
     if movement:
-        movement_str = "stationary" if movement.get("stationary") else f"{movement['compass']} ({movement['degrees']} deg) at {movement['mph']} mph"
+        movement_str = "stationary" if movement.get("stationary") else f"{movement['compass']} at {movement['mph']} mph"
 
     facts = {
         "name": header["status_and_name"],
