@@ -1,11 +1,16 @@
 {
   "last": {
-    "number": "13",
+    "number": "13A",
     "status_and_name": "Tropical Storm Bertha",
-    "lat": 29.8,
-    "lon": -88.6,
-    "wind_mph": 50,
-    "pressure_mb": 998
+    "lat": 29.9,
+    "lon": -89.1,
+    "wind_mph": 45,
+    "pressure_mb": 1000
   },
-  "last_advisory_number": "13"
+  "last_advisory_number": "13A",
+  "pending_cone_verification": {
+    "advisory_num": "13A",
+    "queued_at": 1784741810.8275464,
+    "full_message": "Tropical Storm Bertha -- Advisory #13A\nCategory: Tropical Storm\nSustained wind: 45 mph\nMin pressure: 1000 mb\nMovement: WNW at 7 mph\nWind vs previous advisory: -5 mph (weakened)\nPressure vs previous advisory: +2 mb (weakening signal)\nPeak forecast: 50 mph (Tropical Storm) at 10:00 AM, day 22\n\n(Next complete advisory at 400 PM)\n\nNHC Discussion:\n\nBertha's satellite presentation has continued to degrade this morning, with all of the associated deep convection having been pushed well to the southwest of the exposed surface center due to strong deep-layer shear. That said, dropsonde data from NOAA and Air Force Reserve Hurricane Hunter aircraft indicate that the central pressure has changed very little from the previous advisory. The NOAA aircraft measured a peak 750-mb flight-level wind of 55 kt several hours ago, which equates to an initial intensity of 45 kt. More recent aircraft data suggest those winds may have decreased, but for now we'll continue to hold 45 kt in anticipation of additional aircraft and scatterometer data over the next few hours.\n\nBertha's center has been deviating a bit north of the forecast track, and the current motion estimate is now 290/5 kt. Track model guidance insists that Bertha should resume a westward motion today, but wobbles and deviations like the current one are normal behavior for such a highly sheared tropical cyclone. Once a westward motion resumes, Bertha's center is likely to straddle the coast of Louisiana through Thursday and then reach the upper Texas coast by Thursday evening or night. The NHC track forecast lies along the northern edge of the guidance suite, partially to account for the recent northward jog and partially to closely follow the typically reliable HCCA and GDMI guidance.\n\nThe expected weakening appears to be on the verge of starting, and the main question for the forecast is how quickly will Bertha lose intensity. Part of that equation is how much time the center will spend over land, while the system also continues to contend with strong northeasterly shear. The NHC intensity forecast maintains Bertha as a minimal tropical storm through 36 hours (around the time of a potential Texas landfall), but it's also possible that the cyclone could weaken to a depression or remnant low by that time. Like the track forecast, the intensity forecast is largely a blend of the latest HCCA and GDMI guidance. A remnant low forecast point is shown over Texas at 48 hours for continuity's sake, but Bertha could have dissipated by that time.\n\nKey Messages:\n1. Tropical storm conditions are expected to continue along portions of the northern Gulf Coast from the western Florida Panhandle to southeastern Louisiana, including the Metro New Orleans area, through tonight. Tropical storm conditions are possible for portions of the southwestern coast of Louisiana and upper Texas coast tonight through late Thursday.\n\n2. A Coastal Flood Warning is in effect for the Mississippi and Louisiana coastlines, where moderate coastal flooding is expected.\n\n3. Isolated areas of flash flooding remain possible through Friday morning along the central to western Gulf Coast from Northwest Florida to southern Texas."
+  }
 }
