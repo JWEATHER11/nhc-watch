@@ -57,6 +57,7 @@ IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
 NHC_URLS = {
     "TCP": f"https://www.nhc.noaa.gov/text/MIATCP{STORM_PIL_SUFFIX}.shtml?text",
     "TCD": f"https://www.nhc.noaa.gov/text/MIATCD{STORM_PIL_SUFFIX}.shtml?text",
+    "TCM": f"https://www.nhc.noaa.gov/text/MIATCM{STORM_PIL_SUFFIX}.shtml?text",
 }
 
 STATE_FILE = Path(__file__).parent / "pipeline_state.json"
@@ -256,6 +257,21 @@ def tcd_key_messages(text):
         if item:
             cleaned.append(item)
     return cleaned
+
+
+def tcm_gusts_and_radii(text):
+    """Pulls current gusts (not shown anywhere else) and 34-kt tropical-
+    storm-force wind radii by quadrant from the Forecast/Advisory (TCM) --
+    genuinely new info not covered by TCP or TCD."""
+    result = {}
+    m = re.search(r"MAX SUSTAINED WINDS\s+(\d{1,3})\s*KT\s+WITH GUSTS TO\s+(\d{1,3})\s*KT", text, re.I)
+    if m:
+        result["gust_kt"] = int(m.group(2))
+    m = re.search(r"^\s*34 KT[.\s]+(\d{1,3})NE\s+(\d{1,3})SE\s+(\d{1,3})SW\s+(\d{1,3})NW", text, re.I | re.M)
+    if m:
+        ne, se, sw, nw = (int(m.group(i)) for i in range(1, 5))
+        result["radii_34kt"] = {"NE": ne, "SE": se, "SW": sw, "NW": nw}
+    return result
 
 
 def tcd_discussion_text(text):
@@ -727,6 +743,18 @@ def main():
     except Exception as e:
         print(f"Discussion product unavailable (non-fatal): {e}")
         discussion_paragraphs = []
+
+    try:
+        tcm_text, tcm_source = fetch_product("TCM")
+        if tcm_text:
+            print(f"TCM fetched from {tcm_source}")
+            tcm_data = tcm_gusts_and_radii(tcm_text)
+            if tcm_data.get("gust_kt"):
+                facts["gust_mph"] = kt_to_mph(tcm_data["gust_kt"])
+            if tcm_data.get("radii_34kt"):
+                facts["radii_34kt"] = tcm_data["radii_34kt"]
+    except Exception as e:
+        print(f"Forecast/Advisory (TCM) unavailable (non-fatal): {e}")
 
     bot_header = build_bot_header(facts)
 
