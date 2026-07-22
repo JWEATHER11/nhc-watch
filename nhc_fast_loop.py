@@ -35,16 +35,33 @@ START_TIME = time.time()
 def commit_state_if_changed():
     """Commits pipeline_state.json immediately after any real send, so a
     crash mid-loop never causes us to lose track of what's already been
-    sent (which would risk a duplicate alert on the next run)."""
+    sent (which would risk a duplicate alert on the next run).
+
+    Other continuous loops (recon, etc.) also commit to this same repo, so
+    a plain "git push" can get rejected as non-fast-forward if another
+    loop pushed first. We pull --rebase before pushing, and retry a
+    couple times if it's still rejected, rather than silently dropping
+    the state update (which could otherwise cause a stale
+    pending_cone_verification to linger and fire again incorrectly)."""
     try:
         subprocess.run(["git", "config", "user.name", "nhc-fast-watch-bot"], check=True)
         subprocess.run(["git", "config", "user.email", "actions@users.noreply.github.com"], check=True)
         subprocess.run(["git", "add", "pipeline_state.json"], check=True)
         result = subprocess.run(["git", "diff", "--quiet", "--cached"])
-        if result.returncode != 0:
-            subprocess.run(["git", "commit", "-m", "Update pipeline state [skip ci]"], check=True)
-            subprocess.run(["git", "push"], check=True)
-            print("State committed and pushed.")
+        if result.returncode == 0:
+            return  # nothing changed
+
+        subprocess.run(["git", "commit", "-m", "Update pipeline state [skip ci]"], check=True)
+
+        for attempt in range(1, 4):
+            subprocess.run(["git", "pull", "--rebase", "--autostash"], check=False)
+            push_result = subprocess.run(["git", "push"])
+            if push_result.returncode == 0:
+                print("State committed and pushed.")
+                return
+            print(f"Push attempt {attempt} rejected (likely a concurrent commit from another loop) -- retrying after pull --rebase.")
+            time.sleep(2)
+        print("State push failed after 3 attempts -- will retry with fresh state next loop iteration.")
     except Exception as e:
         print(f"Failed to commit state (non-fatal, will retry next loop): {e}")
 
