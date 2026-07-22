@@ -2,7 +2,7 @@ name: NHC HDOB Watch
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0,35 * * * *"
   workflow_dispatch: {}
 
 permissions:
