@@ -495,11 +495,18 @@ def send_telegram(text):
 # Change Notice 26-27 (2026): storm_graphics/BBXX/CCXXYYYY_5day_cone.png
 # ===========================================================================
 def build_cone_url():
+    """The cone image lives at the SAME url every advisory -- NHC just
+    updates the file in place. That means Telegram's own servers can (and
+    did) serve a cached copy of an OLDER cone instead of re-fetching the
+    live file. Appending a changing query parameter (current epoch seconds)
+    makes each request look like a brand new URL to Telegram, forcing a
+    real fetch of whatever NHC currently has, every single time."""
     basin = STORM_PIL_SUFFIX[:2].upper()  # "AT", "EP", or "CP"
     num = STORM_PIL_SUFFIX[2:].zfill(2)   # e.g. "2" -> "02"
     basin_file_code = "AL" if basin == "AT" else basin  # Atlantic dir is AT, filename code is AL
     year = datetime.utcnow().year
-    return f"https://www.nhc.noaa.gov/storm_graphics/{basin}{num}/{basin_file_code}{num}{year}_5day_cone.png"
+    cache_buster = int(time.time())
+    return f"https://www.nhc.noaa.gov/storm_graphics/{basin}{num}/{basin_file_code}{num}{year}_5day_cone.png?_cb={cache_buster}"
 
 
 def send_telegram_photo(photo_url, caption=""):
