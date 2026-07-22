@@ -294,26 +294,48 @@ def main():
         print(f"No new fix -- still {fix_time['zulu']}. Not sending an update.")
         return
 
-    pressure = extract_central_pressure(text)
+    pressure_mb = extract_central_pressure(text)
+    pressure_val = int(re.match(r"(\d+)", pressure_mb).group(1)) if pressure_mb else None
     eye = extract_eye(text)
     location = extract_center_location(text)
     fl_wind_kt = extract_flight_level_wind(text)
     sfc_wind_kt = extract_surface_wind(text)
     aircraft = extract_aircraft(text)
 
+    # --- Running peak/lowest across this mission (resets automatically
+    # when a new mission starts, since state clears once VDMs stop coming
+    # in and a fresh mission begins with an empty "mission" block) ---
+    mission = state.get("mission", {})
+    if fl_wind_kt and (mission.get("peak_fl_wind_kt") is None or fl_wind_kt > mission["peak_fl_wind_kt"]):
+        mission["peak_fl_wind_kt"] = fl_wind_kt
+        mission["peak_fl_wind_when"] = fix_time["local"]
+    if sfc_wind_kt and (mission.get("peak_sfc_wind_kt") is None or sfc_wind_kt > mission["peak_sfc_wind_kt"]):
+        mission["peak_sfc_wind_kt"] = sfc_wind_kt
+        mission["peak_sfc_wind_when"] = fix_time["local"]
+    if pressure_val and (mission.get("lowest_pressure_mb") is None or pressure_val < mission["lowest_pressure_mb"]):
+        mission["lowest_pressure_mb"] = pressure_val
+        mission["lowest_pressure_when"] = fix_time["local"]
+    state["mission"] = mission
+
     facts_lines = [f"Fix time: {fix_time['local']}"]
     if aircraft:
         facts_lines.append(f"Aircraft: {aircraft}")
     if location:
         facts_lines.append(f"Location: {location}")
-    if pressure:
-        facts_lines.append(f"Central pressure: {pressure}")
+    if pressure_mb:
+        facts_lines.append(f"Central pressure this fix: {pressure_mb}")
     if eye:
         facts_lines.append(f"Eye: {eye}")
     if fl_wind_kt:
-        facts_lines.append(f"Flight-level wind: {with_mph(fl_wind_kt)}")
+        facts_lines.append(f"Flight-level wind this fix: {with_mph(fl_wind_kt)}")
     if sfc_wind_kt:
-        facts_lines.append(f"Surface wind (SFMR): {with_mph(sfc_wind_kt)}")
+        facts_lines.append(f"Surface wind (SFMR) this fix: {with_mph(sfc_wind_kt)}")
+    if mission.get("peak_fl_wind_kt"):
+        facts_lines.append(f"Peak flight-level wind THIS MISSION so far: {with_mph(mission['peak_fl_wind_kt'])} at {mission['peak_fl_wind_when']}")
+    if mission.get("peak_sfc_wind_kt"):
+        facts_lines.append(f"Peak surface wind THIS MISSION so far: {with_mph(mission['peak_sfc_wind_kt'])} at {mission['peak_sfc_wind_when']}")
+    if mission.get("lowest_pressure_mb"):
+        facts_lines.append(f"Lowest pressure THIS MISSION so far: {mission['lowest_pressure_mb']} mb at {mission['lowest_pressure_when']}")
     facts_summary = "\n".join(facts_lines)
     print(f"Facts for Claude:\n{facts_summary}")
 
@@ -328,14 +350,22 @@ def main():
         header_lines.append(f"Aircraft: {aircraft}")
     if location:
         header_lines.append(f"Location: {location}")
-    if pressure:
-        header_lines.append(f"Pressure: {pressure}")
+    if pressure_mb:
+        header_lines.append(f"Pressure: {pressure_mb}")
     if eye:
         header_lines.append(f"Eye: {eye}")
     if fl_wind_kt:
         header_lines.append(f"Flight-level wind: {with_mph(fl_wind_kt)}")
     if sfc_wind_kt:
         header_lines.append(f"Surface wind: {with_mph(sfc_wind_kt)}")
+    header_lines.append("")
+    header_lines.append("-- This mission so far --")
+    if mission.get("peak_fl_wind_kt"):
+        header_lines.append(f"Peak flight-level wind: {with_mph(mission['peak_fl_wind_kt'])} ({mission['peak_fl_wind_when']})")
+    if mission.get("peak_sfc_wind_kt"):
+        header_lines.append(f"Peak surface wind: {with_mph(mission['peak_sfc_wind_kt'])} ({mission['peak_sfc_wind_when']})")
+    if mission.get("lowest_pressure_mb"):
+        header_lines.append(f"Lowest pressure: {mission['lowest_pressure_mb']} mb ({mission['lowest_pressure_when']})")
 
     full_message = "\n".join(header_lines) + "\n\n" + narrative
     print(f"Full message:\n{full_message}")
