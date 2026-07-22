@@ -1,8 +1,9 @@
 {
   "mission": {
-    "peak_fl_wind_kt": 48,
-    "peak_fl_wind_when": "6:19 PM CDT, day 21",
-    "lowest_pressure_mb": 997,
-    "lowest_pressure_when": "6:19 PM CDT, day 21"
-  }
+    "peak_fl_wind_kt": 51,
+    "peak_fl_wind_when": "7:11 PM CDT, day 21",
+    "lowest_pressure_mb": 996,
+    "lowest_pressure_when": "7:11 PM CDT, day 21"
+  },
+  "last_fix_zulu": "22/00:11:26Z"
 }
