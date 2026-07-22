@@ -673,31 +673,9 @@ def main():
         print(f"No change -- still advisory #{advisory_num}. Not sending an update.")
         return
 
-    # NHC issues "Intermediate Advisories" (lettered, e.g. 10A, 10B) between
-    # the main full advisories whenever there's a notable change -- during
-    # an active storm these can come every 1-2 hours, not just every 6.
-    # We only want the full advisories (plain numbers, no letter), which
-    # NHC issues on its normal ~4-6h cadence. Still record the intermediate
-    # as "seen" so we don't keep re-checking it every loop, just don't send.
-    #
-    # EXCEPTIONS that always break through the intermediate filter, even
-    # though the advisory is lettered:
-    #   1. NHC's own "SPECIAL ADVISORY" header text (rapid intensification, etc.)
-    #   2. A real watch/warning change -- NHC lists these explicitly under
-    #      "CHANGES WITH THIS ADVISORY:", and that's exactly the kind of
-    #      actionable news (e.g. "Watch extended westward...") that should
-    #      never get silently skipped just because the advisory is lettered.
-    is_special = bool(re.search(r"SPECIAL\s+ADVISORY", tcp_text, re.I))
-    has_watch_warning_change = bool(tcp_changes(tcp_text))
-    if not advisory_num.isdigit() and not is_special and not has_watch_warning_change:
-        print(f"Advisory #{advisory_num} is a routine Intermediate Advisory with no watch/warning changes -- skipping.")
-        state["last_advisory_number"] = advisory_num
-        save_state(state)
-        return
-    if not advisory_num.isdigit() and (is_special or has_watch_warning_change):
-        reason = "a SPECIAL ADVISORY" if is_special else "a watch/warning change"
-        print(f"Advisory #{advisory_num} contains {reason} -- sending regardless of the intermediate filter.")
-
+    # Sending every distinct advisory NHC issues -- full or intermediate --
+    # per explicit instruction: never miss a real change, speed matters
+    # more than cutting down message frequency.
     location = tcp_location(tcp_text)
     wind_mph = tcp_wind_mph(tcp_text)
     movement = tcp_movement(tcp_text)
