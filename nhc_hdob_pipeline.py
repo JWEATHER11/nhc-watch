@@ -80,12 +80,16 @@ def _fetch_with_retries(url, label):
 
 
 def fetch_hdob():
-    iem_url = f"{IEM_BASE}?pil={HDOB_PIL}"
+    """Cache-buster added after confirming real staleness in the advisory
+    pipeline (IEM/NHC can serve a cached response for a plain URL)."""
+    cache_buster = int(time.time())
+    iem_url = f"{IEM_BASE}?pil={HDOB_PIL}&_cb={cache_buster}"
     text = _fetch_with_retries(iem_url, f"IEM:{HDOB_PIL}")
     if text:
         return text, "IEM"
     print(f"[{HDOB_PIL}] IEM failed, falling back to NHC...")
-    text = _fetch_with_retries(NHC_HDOB_URL, f"NHC:{HDOB_PIL}")
+    nhc_url = f"{NHC_HDOB_URL}&_cb={cache_buster}"
+    text = _fetch_with_retries(nhc_url, f"NHC:{HDOB_PIL}")
     if text:
         return text, "NHC"
     return None, "FAILED"
