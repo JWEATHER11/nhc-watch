@@ -336,15 +336,6 @@ def main():
         facts_lines.append(f"Peak surface wind THIS MISSION so far: {with_mph(mission['peak_sfc_wind_kt'])} at {mission['peak_sfc_wind_when']}")
     if mission.get("lowest_pressure_mb"):
         facts_lines.append(f"Lowest pressure THIS MISSION so far: {mission['lowest_pressure_mb']} mb at {mission['lowest_pressure_when']}")
-    facts_summary = "\n".join(facts_lines)
-    print(f"Facts for Claude:\n{facts_summary}")
-
-    try:
-        narrative = call_claude_api(facts_summary)
-    except Exception as e:
-        send_failure_alert("Claude API rewrite step", str(e))
-        sys.exit(1)
-
     header_lines = [f"Recon Fix -- {fix_time['local']}"]
     if aircraft:
         header_lines.append(f"Aircraft: {aircraft}")
@@ -367,7 +358,7 @@ def main():
     if mission.get("lowest_pressure_mb"):
         header_lines.append(f"Lowest pressure: {mission['lowest_pressure_mb']} mb ({mission['lowest_pressure_when']})")
 
-    full_message = "\n".join(header_lines) + "\n\n" + narrative
+    full_message = "\n".join(header_lines)
     print(f"Full message:\n{full_message}")
 
     try:
