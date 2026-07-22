@@ -366,12 +366,12 @@ def build_bot_header(facts):
     lines = [f"{facts['name']} -- Advisory #{facts['advisory_num']}"]
     if facts.get("current_category"):
         lines.append(f"Category: {facts['current_category']}")
-    if facts.get("movement"):
-        lines.append(f"Movement: {facts['movement']}")
     if facts.get("wind_mph") is not None:
         lines.append(f"Sustained wind: {facts['wind_mph']} mph")
     if facts.get("pressure_mb") is not None:
         lines.append(f"Min pressure: {facts['pressure_mb']} mb")
+    if facts.get("movement"):
+        lines.append(f"Movement: {facts['movement']}")
     if facts.get("wind_change_mph") is not None:
         wc = facts["wind_change_mph"]
         trend = "strengthened" if wc > 0 else ("weakened" if wc < 0 else "held steady")
