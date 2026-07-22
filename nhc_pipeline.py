@@ -252,6 +252,29 @@ def tcd_key_messages(text):
     return cleaned
 
 
+def tcd_discussion_text(text):
+    """Pulls NHC's own discussion paragraphs verbatim -- this is a US
+    government work (public domain), so relaying it directly is both
+    accurate and the actual meteorologist's own words, not an AI
+    paraphrase. Captures everything between the date/time header line and
+    "Key Messages:" (or "FORECAST POSITIONS" if there are no key messages
+    this advisory)."""
+    m = re.search(
+        r"\d{3,4}\s+[AP]M\s+[A-Z]+\s+\w{3}\s+\w+\s+\d{1,2}\s+\d{4}\s*\n+(.*?)\n\s*\n\s*(?:Key Messages:|FORECAST POSITIONS)",
+        text, re.I | re.S,
+    )
+    if not m:
+        return []
+    block = m.group(1).strip()
+    paragraphs = re.split(r"\n\s*\n", block)
+    cleaned = []
+    for p in paragraphs:
+        p = re.sub(r"\s+", " ", p).strip()
+        if p:
+            cleaned.append(p)
+    return cleaned
+
+
 def summarize_forecast_bands(positions, current_mph):
     if not positions:
         return None
@@ -587,6 +610,20 @@ def main():
     advisory_num = header["number"]
     state = load_state()
 
+    # Backup verification: 15 minutes after a successful send, resend just
+    # the cone graphic as a confirmation that it actually came through.
+    pending = state.get("pending_cone_verification")
+    if pending and (time.time() - pending["queued_at"]) >= 900:
+        try:
+            if telegram_configured():
+                cone_url = build_cone_url()
+                send_telegram_photo(cone_url, caption=f"Cone Graphic -- Backup Confirmation (Advisory #{pending['advisory_num']})")
+                print(f"Sent 15-minute verification resend of the cone graphic for advisory #{pending['advisory_num']}.")
+        except Exception as e:
+            print(f"Verification resend failed (non-fatal): {e}")
+        state.pop("pending_cone_verification", None)
+        save_state(state)
+
     if state.get("last_advisory_number") == advisory_num:
         print(f"No change -- still advisory #{advisory_num}. Not sending an update.")
         return
@@ -638,20 +675,19 @@ def main():
             if bands:
                 facts["forecast_bands"] = bands
             key_messages = tcd_key_messages(tcd_text)
+            discussion_paragraphs = tcd_discussion_text(tcd_text)
     except Exception as e:
         print(f"Discussion product unavailable (non-fatal): {e}")
+        discussion_paragraphs = []
 
     bot_header = build_bot_header(facts)
-    facts_summary = build_facts_summary(facts)
-    print(f"Facts for Claude:\n{facts_summary}")
 
-    try:
-        narrative = call_claude_api(facts_summary)
-    except Exception as e:
-        send_failure_alert("Claude API rewrite step", str(e))
-        sys.exit(1)
+    if discussion_paragraphs:
+        narrative = "\n\n".join(discussion_paragraphs)
+    else:
+        narrative = "(NHC's discussion text wasn't available for this advisory.)"
 
-    parts = [bot_header, "", narrative]
+    parts = [bot_header, "", "NHC Discussion:", "", narrative]
     if key_messages:
         parts.append("")
         parts.append("Key Messages:")
@@ -674,6 +710,9 @@ def main():
         sys.exit(1)
 
     print("Sent successfully.")
+
+    if telegram_configured():
+        state["pending_cone_verification"] = {"advisory_num": advisory_num, "queued_at": time.time()}
 
     new_last = {"number": advisory_num, "status_and_name": header["status_and_name"]}
     if location:
