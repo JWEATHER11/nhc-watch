@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 """
 nhc_hdob_pipeline.py -- Tracks High-Density Observations (HDOB) from recon
-aircraft. Unlike Vortex Messages (periodic, only when a center fix is made),
-HDOB lines come every 30-120 seconds throughout a flight, giving continuous
-flight-level wind, SFMR surface wind, and extrapolated surface pressure
-readings.
+aircraft, but ONLY alerts when something genuinely stands out -- not every
+30-second reading.
 
-This does NOT alert on every HDOB line (that would be constant spam).
-It only alerts when a NEW MISSION RECORD is found -- a stronger flight-level
-wind, a stronger SFMR surface wind, or a lower pressure than anything seen
-so far this mission. That's the actual signal: "recon just found something
-stronger than before."
+The key comparison is against NHC's own CURRENT OFFICIAL intensity (read
+from pipeline_state.json, shared with nhc_pipeline.py), not just this
+mission's own running peak. A recon reading that's merely "the highest
+we've seen in the last 10 minutes" isn't news if it's still below what NHC
+already has as the official current wind/pressure -- that's expected noise.
+What's actually worth a message:
+
+  - Winds holding at or above NHC's official current wind (confirms the
+    storm is at least as strong as advertised, or stronger)
+  - Pressure dropping meaningfully below NHC's official current pressure
+    (a real intensification signal)
+  - The reverse of either -- winds notably below official, or pressure
+    notably above official and rising -- as a weakening signal
+
+Each of those only fires once per meaningful threshold crossed, not on
+every subsequent reading that's still in the same range, so this doesn't
+turn into a stream of near-duplicate alerts.
 
 Field format is the official NHC HD/HA data line spec:
   hhmmss LLLLH NNNNNW PPPP GGGGG XXXX sTTT sddd wwwSSS MMM KKK ppp FF
@@ -30,13 +40,23 @@ from pathlib import Path
 
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
 HDOB_PIL = "AHONT1"  # Atlantic HDOB from NHC
-NHC_HDOB_URL = "https://www.nhc.noaa.gov/text/URNT15-USAF.shtml?text"  # fallback
+NHC_HDOB_URL = "https://www.nhc.noaa.gov/text/URNT15-USAF.shtml?text"
 
 STATE_FILE = Path(__file__).parent / "hdob_state.json"
+ADVISORY_STATE_FILE = Path(__file__).parent / "pipeline_state.json"  # shared w/ nhc_pipeline.py
 CENTRAL_UTC_OFFSET = 5
 
 MAX_ATTEMPTS = 3
 RETRY_DELAY_SEC = 5
+
+# --- Significance thresholds -- tuned to only fire on things a met would
+# actually call out, not routine noise ---
+WIND_STEADY_MARGIN_MPH = 3       # within this of official = "confirmed steady"
+WIND_RE_ALERT_DELTA_MPH = 5      # must climb this much further to alert again
+PRESSURE_DROP_THRESHOLD_MB = 3   # must be at least this far below official to matter
+PRESSURE_RE_ALERT_DELTA_MB = 3   # must drop this much further to alert again
+WEAKENING_WIND_MARGIN_MPH = 8    # this far below official = worth flagging as weakening
+WEAKENING_PRESSURE_MARGIN_MB = 3 # this far above official = worth flagging as weakening
 
 
 def _http_get(url, timeout=20):
@@ -114,19 +134,11 @@ def parse_hdob_bulletin(text):
         extrap_or_dvalue_raw = m.group(10)
 
         static_press_mb = int(static_press_raw) / 10
-        # If aircraft static pressure >= 550.0 mb, XXXX is extrapolated
-        # surface pressure (same tenths-mb, leading-1-dropped format).
-        # Otherwise it's a D-value in meters, not a pressure -- skip it.
         sfc_pressure_mb = None
         if static_press_mb >= 550.0:
             raw = int(extrap_or_dvalue_raw)
-            # Leading "1" gets dropped for pressures >= 1000mb. In active
-            # hurricane recon the true value is almost always well under
-            # 1000, so this only matters in edge cases.
             sfc_pressure_mb = raw / 10 if raw >= 7000 else (1000 + raw / 10)
 
-        fl_wind_dir = int(m.group(12))
-        fl_wind_kt = int(m.group(13))
         peak_fl_wind_kt = int(m.group(14))
         peak_sfmr_kt_raw = m.group(15)
         peak_sfmr_kt = int(peak_sfmr_kt_raw) if peak_sfmr_kt_raw != "///" else None
@@ -142,28 +154,38 @@ def parse_hdob_bulletin(text):
     return aircraft, storm_name, obs
 
 
-def load_state():
-    return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
+def load_json(path):
+    return json.loads(path.read_text()) if path.exists() else {}
 
 
-def save_state(state):
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+def save_json(path, data):
+    path.write_text(json.dumps(data, indent=2))
 
 
-HDOB_VOICE_PROMPT = """You write a ONE-sentence alert for a Gulf Coast / Southeast Texas audience when hurricane recon finds a NEW record-strength reading during an active mission -- either the strongest flight-level or surface wind found so far, or the lowest pressure found so far.
+def get_official_intensity():
+    """Reads NHC's current official wind/pressure from the shared advisory
+    state file. Returns (wind_mph, pressure_mb, storm_name) or (None, None,
+    None) if unavailable -- in which case we fall back to pure
+    mission-peak tracking rather than blocking entirely."""
+    adv_state = load_json(ADVISORY_STATE_FILE)
+    last = adv_state.get("last", {})
+    return last.get("wind_mph"), last.get("pressure_mb"), last.get("status_and_name")
+
+
+HDOB_VOICE_PROMPT = """You write a SHORT alert (2-3 sentences max) for a Gulf Coast / Southeast Texas audience about what hurricane recon is finding RIGHT NOW, compared to NHC's official current stated intensity.
 
 House style: use "&" not "and", no Oxford comma, capitalize "Tropical" always, confident & conversational, collective "we".
 
-This is specifically a NEW RECORD for this mission -- lead with that. Do not invent numbers not given. No hashtags, at most one emoji. Output ONLY the sentence, nothing else."""
+You'll be told whether this is a STRENGTHENING signal (recon winds holding at/above official, or pressure dropping below official), a WEAKENING signal (recon winds notably below official, or pressure notably above official and rising), or STEADY. Lead with what this means for the storm's trend -- this is meant to feel like "here's what recon is telling us right now," the kind of thing a meteorologist would flag as worth watching. Use only the facts given. No hashtags, at most one emoji. Output ONLY the alert text, nothing else."""
 
 
 def call_claude_api(facts_summary):
     api_key = os.environ["ANTHROPIC_API_KEY"]
     payload = json.dumps({
         "model": "claude-sonnet-5",
-        "max_tokens": 150,
+        "max_tokens": 250,
         "system": HDOB_VOICE_PROMPT,
-        "messages": [{"role": "user", "content": f"New record found:\n\n{facts_summary}"}],
+        "messages": [{"role": "user", "content": facts_summary}],
     }).encode("utf-8")
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
@@ -252,7 +274,6 @@ def send_failure_alert(context, error):
 def main():
     text, source = fetch_hdob()
     if not text:
-        # Not fatal -- no plane flying is the normal state most of the time.
         print("No HDOB data available (likely no active mission right now). Exiting quietly.")
         return
     print(f"HDOB fetched from {source}")
@@ -262,51 +283,89 @@ def main():
         print("HDOB product found but no parseable observation lines. Exiting quietly.")
         return
 
-    state = load_state()
+    state = load_json(STATE_FILE)
     last_seen_time = state.get("last_seen_hhmmss")
-    mission = state.get("mission", {})
 
-    new_records = []
-    latest_time_seen = last_seen_time
-
-    for ob in obs:
-        # Skip observations we've already processed in a prior run.
-        if last_seen_time and ob["hhmmss"] <= last_seen_time:
-            continue
-        latest_time_seen = ob["hhmmss"] if not latest_time_seen or ob["hhmmss"] > latest_time_seen else latest_time_seen
-
-        if ob["peak_fl_wind_kt"] and (mission.get("peak_fl_wind_kt") is None or ob["peak_fl_wind_kt"] > mission["peak_fl_wind_kt"]):
-            mission["peak_fl_wind_kt"] = ob["peak_fl_wind_kt"]
-            mission["peak_fl_wind_when"] = ob["local_time"]
-            new_records.append(f"New peak flight-level wind: {ob['peak_fl_wind_kt']} kt ({kt_to_mph(ob['peak_fl_wind_kt'])} mph) at {ob['local_time']}")
-
-        if ob["peak_sfmr_kt"] and (mission.get("peak_sfmr_kt") is None or ob["peak_sfmr_kt"] > mission["peak_sfmr_kt"]):
-            mission["peak_sfmr_kt"] = ob["peak_sfmr_kt"]
-            mission["peak_sfmr_when"] = ob["local_time"]
-            new_records.append(f"New peak surface (SFMR) wind: {ob['peak_sfmr_kt']} kt ({kt_to_mph(ob['peak_sfmr_kt'])} mph) at {ob['local_time']}")
-
-        if ob["sfc_pressure_mb"] and (mission.get("lowest_pressure_mb") is None or ob["sfc_pressure_mb"] < mission["lowest_pressure_mb"]):
-            mission["lowest_pressure_mb"] = ob["sfc_pressure_mb"]
-            mission["lowest_pressure_when"] = ob["local_time"]
-            new_records.append(f"New lowest pressure: {ob['sfc_pressure_mb']:.1f} mb at {ob['local_time']}")
-
-    state["mission"] = mission
-    if latest_time_seen:
-        state["last_seen_hhmmss"] = latest_time_seen
-
-    if not new_records:
-        print(f"No new mission records in this bulletin ({len(obs)} obs checked). Not sending an update.")
-        save_state(state)
+    # Only look at observations newer than what we've already processed.
+    new_obs = [o for o in obs if not last_seen_time or o["hhmmss"] > last_seen_time]
+    if not new_obs:
+        print("No new observations since last check. Not sending an update.")
         return
 
-    facts_lines = []
+    latest_time_seen = max(o["hhmmss"] for o in new_obs)
+    state["last_seen_hhmmss"] = latest_time_seen
+
+    # Batch stats for just this new chunk of observations -- this is what
+    # we compare against NHC's official numbers, not any single blip.
+    sfmr_vals = [o["peak_sfmr_kt"] for o in new_obs if o["peak_sfmr_kt"]]
+    fl_vals = [o["peak_fl_wind_kt"] for o in new_obs if o["peak_fl_wind_kt"]]
+    press_vals = [o["sfc_pressure_mb"] for o in new_obs if o["sfc_pressure_mb"]]
+
+    batch_wind_kt = max(sfmr_vals) if sfmr_vals else (max(fl_vals) if fl_vals else None)
+    batch_wind_mph = kt_to_mph(batch_wind_kt) if batch_wind_kt else None
+    batch_min_pressure_mb = min(press_vals) if press_vals else None
+    latest_time = new_obs[-1]["local_time"]
+
+    official_wind_mph, official_pressure_mb, official_name = get_official_intensity()
+    print(f"Official (NHC advisory) intensity: {official_wind_mph} mph, {official_pressure_mb} mb")
+    print(f"This batch: peak wind {batch_wind_mph} mph, min pressure {batch_min_pressure_mb} mb, at {latest_time}")
+
+    save_json(STATE_FILE, state)  # persist last_seen_hhmmss regardless of whether we alert
+
+    if official_wind_mph is None and official_pressure_mb is None:
+        print("No official intensity available to compare against -- skipping this cycle rather than guessing.")
+        return
+
+    alert_reason = None
+    signal_type = None  # "strengthening", "weakening"
+
+    last_alert_wind = state.get("last_alert_wind_mph")
+    last_alert_pressure = state.get("last_alert_pressure_mb")
+
+    if batch_wind_mph is not None and official_wind_mph is not None:
+        if batch_wind_mph >= official_wind_mph - WIND_STEADY_MARGIN_MPH:
+            if last_alert_wind is None or batch_wind_mph >= last_alert_wind + WIND_RE_ALERT_DELTA_MPH:
+                alert_reason = f"Recon winds ({batch_wind_mph} mph) are holding at or above NHC's official current {official_wind_mph} mph."
+                signal_type = "strengthening"
+                state["last_alert_wind_mph"] = batch_wind_mph
+        elif batch_wind_mph <= official_wind_mph - WEAKENING_WIND_MARGIN_MPH:
+            if last_alert_wind is None or batch_wind_mph <= last_alert_wind - WIND_RE_ALERT_DELTA_MPH:
+                alert_reason = f"Recon winds ({batch_wind_mph} mph) are notably below NHC's official current {official_wind_mph} mph."
+                signal_type = "weakening"
+                state["last_alert_wind_mph"] = batch_wind_mph
+
+    if batch_min_pressure_mb is not None and official_pressure_mb is not None and not alert_reason:
+        if batch_min_pressure_mb <= official_pressure_mb - PRESSURE_DROP_THRESHOLD_MB:
+            if last_alert_pressure is None or batch_min_pressure_mb <= last_alert_pressure - PRESSURE_RE_ALERT_DELTA_MB:
+                alert_reason = f"Recon pressure ({batch_min_pressure_mb:.1f} mb) is dropping meaningfully below NHC's official current {official_pressure_mb} mb."
+                signal_type = "strengthening"
+                state["last_alert_pressure_mb"] = batch_min_pressure_mb
+        elif batch_min_pressure_mb >= official_pressure_mb + WEAKENING_PRESSURE_MARGIN_MB:
+            if last_alert_pressure is None or batch_min_pressure_mb >= last_alert_pressure + PRESSURE_RE_ALERT_DELTA_MB:
+                alert_reason = f"Recon pressure ({batch_min_pressure_mb:.1f} mb) is notably above NHC's official current {official_pressure_mb} mb & rising."
+                signal_type = "weakening"
+                state["last_alert_pressure_mb"] = batch_min_pressure_mb
+
+    if not alert_reason:
+        print("Nothing significant enough to alert on this cycle (within normal range of official intensity).")
+        save_json(STATE_FILE, state)
+        return
+
+    facts_lines = [f"Signal type: {signal_type}", alert_reason]
     if aircraft:
         facts_lines.append(f"Aircraft: {aircraft}")
-    if storm_name:
-        facts_lines.append(f"Storm: {storm_name}")
-    facts_lines.extend(new_records)
+    if storm_name or official_name:
+        facts_lines.append(f"Storm: {storm_name or official_name}")
+    if official_wind_mph is not None:
+        facts_lines.append(f"NHC official current wind: {official_wind_mph} mph")
+    if official_pressure_mb is not None:
+        facts_lines.append(f"NHC official current pressure: {official_pressure_mb} mb")
+    if batch_wind_mph is not None:
+        facts_lines.append(f"Recon peak wind this batch: {batch_wind_mph} mph at {latest_time}")
+    if batch_min_pressure_mb is not None:
+        facts_lines.append(f"Recon minimum pressure this batch: {batch_min_pressure_mb:.1f} mb at {latest_time}")
     facts_summary = "\n".join(facts_lines)
-    print(f"New records found:\n{facts_summary}")
+    print(f"Alert-worthy signal found:\n{facts_summary}")
 
     try:
         narrative = call_claude_api(facts_summary)
@@ -314,21 +373,18 @@ def main():
         send_failure_alert("Claude API rewrite step", str(e))
         sys.exit(1)
 
-    header_lines = ["Recon New Record"]
-    if aircraft:
-        header_lines.append(f"Aircraft: {aircraft}")
-    header_lines.extend(new_records)
-    full_message = "\n".join(header_lines) + "\n\n" + narrative
+    header = "Recon Signal: Strengthening" if signal_type == "strengthening" else "Recon Signal: Weakening"
+    full_message = f"{header}\n\n{narrative}"
     print(f"Full message:\n{full_message}")
 
     try:
-        deliver(full_message, subject="Recon New Record")
+        deliver(full_message, subject=header)
     except Exception as e:
         send_failure_alert("Delivery", str(e))
         sys.exit(1)
 
     print("Sent successfully.")
-    save_state(state)
+    save_json(STATE_FILE, state)
 
 
 if __name__ == "__main__":
