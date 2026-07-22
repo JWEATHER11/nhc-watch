@@ -1,11 +1,1 @@
-{
-  "mission": {
-    "peak_fl_wind_kt": 44,
-    "peak_fl_wind_when": "10:38 PM CDT, day 21",
-    "peak_sfmr_kt": 45,
-    "peak_sfmr_when": "10:38 PM CDT, day 21",
-    "lowest_pressure_mb": 1008.5,
-    "lowest_pressure_when": "10:43 PM CDT, day 21"
-  },
-  "last_seen_hhmmss": "034300"
-}
+{}
