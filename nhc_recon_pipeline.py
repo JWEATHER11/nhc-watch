@@ -62,13 +62,17 @@ def _fetch_with_retries(url, label):
 
 
 def fetch_recon():
+    """Cache-buster added after confirming real staleness in the advisory
+    pipeline (IEM/NHC can serve a cached response for a plain URL)."""
     pil = f"REP{STORM_PIL_SUFFIX}"
-    iem_url = f"{IEM_BASE}?pil={pil}"
+    cache_buster = int(time.time())
+    iem_url = f"{IEM_BASE}?pil={pil}&_cb={cache_buster}"
     text = _fetch_with_retries(iem_url, f"IEM:{pil}")
     if text:
         return text, "IEM"
     print(f"[{pil}] IEM failed, falling back to NHC...")
-    text = _fetch_with_retries(NHC_RECON_URL, f"NHC:{pil}")
+    nhc_url = f"{NHC_RECON_URL}&_cb={cache_buster}"
+    text = _fetch_with_retries(nhc_url, f"NHC:{pil}")
     if text:
         return text, "NHC"
     return None, "FAILED"
