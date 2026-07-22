@@ -679,11 +679,19 @@ def main():
     # We only want the full advisories (plain numbers, no letter), which
     # NHC issues on its normal ~4-6h cadence. Still record the intermediate
     # as "seen" so we don't keep re-checking it every loop, just don't send.
-    if not advisory_num.isdigit():
-        print(f"Advisory #{advisory_num} is an Intermediate Advisory -- skipping (only sending full advisories).")
+    #
+    # EXCEPTION: if NHC labels this a genuine Special Advisory (their own
+    # header text, not something we're guessing at), it always gets through
+    # regardless of the lettered numbering -- these are reserved for
+    # significant unexpected changes like rapid intensification.
+    is_special = bool(re.search(r"SPECIAL\s+ADVISORY", tcp_text, re.I))
+    if not advisory_num.isdigit() and not is_special:
+        print(f"Advisory #{advisory_num} is a routine Intermediate Advisory -- skipping (only sending full advisories).")
         state["last_advisory_number"] = advisory_num
         save_state(state)
         return
+    if not advisory_num.isdigit() and is_special:
+        print(f"Advisory #{advisory_num} is a SPECIAL ADVISORY -- sending regardless of the intermediate filter.")
 
     location = tcp_location(tcp_text)
     wind_mph = tcp_wind_mph(tcp_text)
