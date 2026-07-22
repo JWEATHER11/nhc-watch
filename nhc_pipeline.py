@@ -673,6 +673,18 @@ def main():
         print(f"No change -- still advisory #{advisory_num}. Not sending an update.")
         return
 
+    # NHC issues "Intermediate Advisories" (lettered, e.g. 10A, 10B) between
+    # the main full advisories whenever there's a notable change -- during
+    # an active storm these can come every 1-2 hours, not just every 6.
+    # We only want the full advisories (plain numbers, no letter), which
+    # NHC issues on its normal ~4-6h cadence. Still record the intermediate
+    # as "seen" so we don't keep re-checking it every loop, just don't send.
+    if not advisory_num.isdigit():
+        print(f"Advisory #{advisory_num} is an Intermediate Advisory -- skipping (only sending full advisories).")
+        state["last_advisory_number"] = advisory_num
+        save_state(state)
+        return
+
     location = tcp_location(tcp_text)
     wind_mph = tcp_wind_mph(tcp_text)
     movement = tcp_movement(tcp_text)
