@@ -27,15 +27,29 @@ START_TIME = time.time()
 
 
 def commit_state_if_changed():
+    """Other continuous loops (advisory fast-watch, etc.) also commit to
+    this same repo, so a plain "git push" can get rejected as
+    non-fast-forward if another loop pushed first. We pull --rebase
+    before pushing, and retry a couple times if it's still rejected."""
     try:
         subprocess.run(["git", "config", "user.name", "nhc-recon-fast-bot"], check=True)
         subprocess.run(["git", "config", "user.email", "actions@users.noreply.github.com"], check=True)
         subprocess.run(["git", "add", "recon_pipeline_state.json"], check=True)
         result = subprocess.run(["git", "diff", "--quiet", "--cached"])
-        if result.returncode != 0:
-            subprocess.run(["git", "commit", "-m", "Update recon pipeline state [skip ci]"], check=True)
-            subprocess.run(["git", "push"], check=True)
-            print("State committed and pushed.")
+        if result.returncode == 0:
+            return
+
+        subprocess.run(["git", "commit", "-m", "Update recon pipeline state [skip ci]"], check=True)
+
+        for attempt in range(1, 4):
+            subprocess.run(["git", "pull", "--rebase", "--autostash"], check=False)
+            push_result = subprocess.run(["git", "push"])
+            if push_result.returncode == 0:
+                print("State committed and pushed.")
+                return
+            print(f"Push attempt {attempt} rejected (likely a concurrent commit from another loop) -- retrying after pull --rebase.")
+            time.sleep(2)
+        print("State push failed after 3 attempts -- will retry with fresh state next loop iteration.")
     except Exception as e:
         print(f"Failed to commit state (non-fatal, will retry next loop): {e}")
 
