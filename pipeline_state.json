@@ -1,10 +1,19 @@
 {
   "last": {
-    "number": "12",
+    "number": "13A",
     "status_and_name": "Tropical Storm Bertha",
-    "lat": 29.4,
-    "lon": -88.3,
-    "wind_mph": 50,
-    "pressure_mb": 998
-  }
+    "lat": 29.9,
+    "lon": -89.1,
+    "wind_mph": 45,
+    "pressure_mb": 1000
+  },
+  "pending_cone_verification": {
+    "advisory_num": "13A",
+    "queued_at": 1784742709.8877459,
+    "full_message": "Issued: 1:00 PM Wed Jul 22\n\nTropical Storm Bertha -- Advisory #13A\nCategory: Tropical Storm\nSustained wind: 45 mph (gusts 63 mph)\nMin pressure: 1000 mb\nMovement: WNW at 7 mph\nTrack change: moved 59 mi NW since advisory #12\nTropical storm-force winds extend: NE 60 mi, SE 90 mi, SW 60 mi, NW 40 mi\nWind vs previous advisory: -5 mph (weakened)\nPressure vs previous advisory: +2 mb (weakening signal)\nPeak forecast: 50 mph (Tropical Storm) at 10:00 AM, day 22\n\n(Next complete advisory at 400 PM)"
+  },
+  "pending_discussion": {
+    "advisory_num": "13A"
+  },
+  "last_advisory_number": "13A"
 }
