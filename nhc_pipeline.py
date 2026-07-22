@@ -101,15 +101,21 @@ def _fetch_with_retries(url, label):
 
 
 def fetch_product(product_type):
+    """Both IEM and NHC's own site can serve a cached response for a
+    plain, unchanging URL -- this caused real, confirmed staleness
+    (identical Discussion text repeated across genuinely different
+    advisories). Appending a changing cache-buster query param forces a
+    fresh fetch every single time, same fix as the cone graphic."""
     pil = f"{product_type}{STORM_PIL_SUFFIX}"
-    iem_url = f"{IEM_BASE}?pil={pil}"
+    cache_buster = int(time.time())
+    iem_url = f"{IEM_BASE}?pil={pil}&_cb={cache_buster}"
 
     text = _fetch_with_retries(iem_url, f"IEM:{pil}")
     if text:
         return text, "IEM"
 
     print(f"[{pil}] IEM failed after {MAX_ATTEMPTS} attempts, falling back to NHC...")
-    nhc_url = NHC_URLS[product_type]
+    nhc_url = f"{NHC_URLS[product_type]}&_cb={cache_buster}" if "?" in NHC_URLS[product_type] else f"{NHC_URLS[product_type]}?_cb={cache_buster}"
     text = _fetch_with_retries(nhc_url, f"NHC:{pil}")
     if text:
         return text, "NHC"
