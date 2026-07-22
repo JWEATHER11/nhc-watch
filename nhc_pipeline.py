@@ -534,6 +534,19 @@ def build_cone_url():
     return f"https://www.nhc.noaa.gov/storm_graphics/{basin}{num}/{basin_file_code}{num}{year}_5day_cone.png?_cb={cache_buster}"
 
 
+def build_surge_url():
+    """Peak Storm Surge Forecast graphic -- same directory/naming pattern
+    as the cone, confirmed live. Only meaningful when a storm surge
+    watch/warning is active; NHC doesn't always have a current one, so
+    callers should treat a fetch failure here as normal/non-fatal."""
+    basin = STORM_PIL_SUFFIX[:2].upper()
+    num = STORM_PIL_SUFFIX[2:].zfill(2)
+    basin_file_code = "AL" if basin == "AT" else basin
+    year = datetime.utcnow().year
+    cache_buster = int(time.time())
+    return f"https://www.nhc.noaa.gov/storm_graphics/{basin}{num}/{basin_file_code}{num}{year}_peak_surge.png?_cb={cache_buster}"
+
+
 def send_telegram_photo(photo_url, caption=""):
     bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
@@ -612,8 +625,10 @@ def main():
     advisory_num = header["number"]
     state = load_state()
 
-    # Backup verification: 15 minutes after a successful send, resend just
-    # the cone graphic as a confirmation that it actually came through.
+    # Backup verification: 15 minutes after a successful send, resend the
+    # cone graphic (confirms it actually came through) plus the storm
+    # surge graphic (updates less often, so it's fine to only include it
+    # here rather than slowing down the fast lead update).
     pending = state.get("pending_cone_verification")
     if pending and (time.time() - pending["queued_at"]) >= 900:
         try:
@@ -622,7 +637,14 @@ def main():
                 send_telegram_photo(cone_url, caption=f"Cone Graphic -- Backup Confirmation (Advisory #{pending['advisory_num']})")
                 print(f"Sent 15-minute verification resend of the cone graphic for advisory #{pending['advisory_num']}.")
         except Exception as e:
-            print(f"Verification resend failed (non-fatal): {e}")
+            print(f"Cone verification resend failed (non-fatal): {e}")
+        try:
+            if telegram_configured():
+                surge_url = build_surge_url()
+                send_telegram_photo(surge_url, caption=f"Peak Storm Surge Forecast (Advisory #{pending['advisory_num']})")
+                print(f"Sent storm surge graphic for advisory #{pending['advisory_num']}.")
+        except Exception as e:
+            print(f"Storm surge graphic send failed (non-fatal -- may not be active right now): {e}")
         state.pop("pending_cone_verification", None)
         save_state(state)
 
