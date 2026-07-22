@@ -643,10 +643,16 @@ def main():
         try:
             if telegram_configured():
                 cone_url = build_cone_url()
-                send_telegram_photo(cone_url, caption=f"Cone Graphic -- Backup Confirmation (Advisory #{pending['advisory_num']})")
-                print(f"Sent 15-minute verification resend of the cone graphic for advisory #{pending['advisory_num']}.")
+                send_telegram_photo(cone_url, caption=f"Cone Graphic -- 15-Min Backup Confirmation (Advisory #{pending['advisory_num']})")
+                print(f"Sent 15-minute verification cone graphic for advisory #{pending['advisory_num']}.")
         except Exception as e:
             print(f"Cone verification resend failed (non-fatal): {e}")
+        try:
+            if pending.get("full_message"):
+                deliver(pending["full_message"], subject=f"15-Min Backup -- Advisory #{pending['advisory_num']}")
+                print(f"Resent the full update for advisory #{pending['advisory_num']} as the 15-minute backup.")
+        except Exception as e:
+            print(f"Full-update verification resend failed (non-fatal): {e}")
         try:
             if telegram_configured():
                 surge_url = build_surge_url()
@@ -745,7 +751,11 @@ def main():
     print("Sent successfully.")
 
     if telegram_configured():
-        state["pending_cone_verification"] = {"advisory_num": advisory_num, "queued_at": time.time()}
+        state["pending_cone_verification"] = {
+            "advisory_num": advisory_num,
+            "queued_at": time.time(),
+            "full_message": full_message,
+        }
 
     new_last = {"number": advisory_num, "status_and_name": header["status_and_name"]}
     if location:
