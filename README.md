@@ -1,155 +1,56 @@
-# NHC Storm Watch — Automated Advisory & Recon Texts
+# NHC Storm Watch
 
-Checks NHC pages on a schedule and texts you a summary whenever something new
-posts — no copy/pasting required.
+Fully automated hurricane advisory & recon tracking system for the Gulf Coast / Southeast Texas (Beaumont) area. Fetches NHC data, compares to the last update, rewrites it in a broadcast-meteorologist voice, and sends it to Telegram -- with zero manual steps once it's running.
 
-Two independent watchers:
+## The three active pipelines
 
-| | Public/Intermediate Advisory | Recon VDM |
-|---|---|---|
-| Script | `check_storm.py` | `check_recon.py` |
-| Workflow | `.github/workflows/nhc-watch.yml` | `.github/workflows/nhc-recon-watch.yml` |
-| State file | `state.json` | `recon_state.json` |
-| Runs | Every hour | Every 15 minutes |
-| Watches | `https://www.nhc.noaa.gov/text/MIATCPAT2.shtml` | `https://www.nhc.noaa.gov/text/MIAREPNT2.shtml` |
-| Dedupes on | Advisory number (e.g. "6A") | Fix time (VDMs don't have a sequence number) |
+### 1. NHC Fast Watch (`nhc_pipeline.py` + `nhc_fast_loop.py`)
+The main advisory watcher. Runs **continuously**, checking every ~25 seconds, 24/7.
 
-## What the Advisory text includes
+- Fetches the Public Advisory (TCP) and Discussion (TCD) from IEM first, falling back to NHC's own site if IEM is down
+- Compares to the last advisory: distance/direction moved, wind/pressure change, status change
+- Converts kt->mph, Zulu->Central time, mph->Saffir-Simpson category -- all hard-coded math, zero AI involved in any number
+- Sends the structured facts (not raw NHC text) to the Claude API, which writes a 2-paragraph narrative: paragraph 1 is current state & why watches/warnings changed, paragraph 2 is the medium-to-long-term outlook (peak intensity, when, when it weakens)
+- Delivers to Telegram, with NHC's own Key Messages appended at the bottom, verbatim
+- **How it stays running 24/7 despite GitHub's 6-hour job limit:** `nhc_fast_loop.py` wraps the pipeline in a loop, and about 15 minutes before hitting that limit, it calls the GitHub API to trigger a fresh run of itself, so there's no gap. A 6-hour scheduled trigger exists as a safety net in case that self-restart chain ever breaks.
+- Workflow file: `.github/workflows/nhc-fast-watch.yml`
+- State file: `pipeline_state.json`
 
-Every Advisory text is ONE message with three parts, in this order:
+### 2. NHC Recon Pipeline (`nhc_recon_pipeline.py`)
+Separate & independent. Checks every 5 minutes for new recon aircraft fixes (VDMs).
 
-1. **A short "in your voice" blurb** — templated (not AI-generated at runtime,
-   so it's consistent and doesn't need an API key), covering what changed and
-   where the storm is headed, in a condensed version of your house style
-2. **The comparison section** — distance/direction/speed moved since the last
-   advisory, whether NHC changed anything (pulled from their own "CHANGES
-   WITH THIS ADVISORY" section), and status/wind/pressure deltas
-3. **The full technical breakdown** — every field from the Forecast/Advisory
-   product (location, movement, pressure, sustained wind, peak forecast
-   wind, position accuracy, next advisory) plus the complete multi-day
-   forecast track table
+- Only sends when a plane is actually in the storm (VDMs stop when no mission is flying)
+- Tracks **running peak flight-level wind, peak surface wind (SFMR), and lowest pressure for the whole mission** -- not just the latest single fix
+- Short 1-2 sentence AI read on what the fix means (still weak, steadily deepening, etc.)
+- Delivers to the same Telegram chat as Fast Watch
+- Workflow file: `.github/workflows/nhc-recon-pipeline.yml`
+- State file: `recon_pipeline_state.json`
 
-**Important — message length:** this combined message typically runs
-**1,000–1,200+ characters**. That is long for SMS. Most carriers will split
-it into several text-message parts, and some may truncate it. This was a
-deliberate tradeoff — the alternative (short text + separate email for the
-full breakdown) was considered and turned down in favor of one message that
-has everything, accepting that it may arrive as multiple texts or get cut
-off on some carriers. If that turns out to be a real problem once you're
-seeing it live, it's a small change to split the delivery — just say so.
+### 3. Legacy SMS system (`check_storm.py` / `check_recon.py`)
+The original text-message-based system built before Telegram was set up. Still present but superseded by the two pipelines above. Safe to disable (see below) if you don't want duplicate alerts.
 
-Two NHC products get fetched for this single message:
-- **Public/Intermediate Advisory** (`MIATCPAT2`) — drives the "something new
-  posted" detection and the comparison math
-- **Forecast/Advisory** (`MIATCMAT2`) — drives the full technical breakdown
-  and forecast track. Note: Intermediate Advisories (like "6A") only exist
-  as Public Advisories, not Forecast/Advisories — so when an intermediate
-  triggers the message, the "Full Breakdown" section will reflect whatever
-  the most recent Forecast/Advisory was, which may be numbered slightly
-  differently. That's expected, not a bug.
+## Required secrets
+Set in **Settings -> Secrets and variables -> Actions**:
 
-## What the Recon text includes
+| Secret | What it's for |
+|---|---|
+| `ANTHROPIC_API_KEY` | Claude API key (from platform.claude.com/dashboard) -- funds the AI rewrite step |
+| `TELEGRAM_BOT_TOKEN` | From @BotFather in Telegram |
+| `TELEGRAM_CHAT_ID` | Your Telegram chat ID |
+| `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | Gmail SMTP, used as a fallback if Telegram isn't configured, and for the legacy SMS system |
+| `ALERT_TO` | Phone-to-SMS email gateway address, used by the legacy system & as a last-resort fallback |
 
-- Fix time (Central), aircraft callsign/mission, position, pressure, eye
-  status, flight-level wind, surface (SFMR) wind when reported
+## Pausing everything (for quiet weeks with no storms)
+No code changes needed. Go to the **Actions** tab, click a workflow name in the left sidebar, click the **"..."** menu, click **"Disable workflow."** Click **"Enable workflow"** the same way to resume. Do this for each of the 3-4 workflows you want paused.
 
-## One-time setup (15–20 minutes)
+## When a new storm forms (this storm dissipates, a new one gets a new number)
+Update `STORM_PIL_SUFFIX` in **both** `nhc_pipeline.py` and `nhc_recon_pipeline.py` -- e.g. change `"AT2"` to `"AT3"` for the 3rd Atlantic storm of the season. That's the only code change needed.
 
-1. **Create a GitHub repo.** Go to github.com, click "New repository," name it
-   whatever you want (e.g. `nhc-watch`), keep it **Private**, create it.
+## Manually testing anything
+Go to **Actions**, click the workflow, click **"Run workflow."** To force a real test send (bypass the "no change since last time" dedupe check), edit the relevant state file (`pipeline_state.json` or `recon_pipeline_state.json`) and clear the `last_advisory_number` / `last_fix_zulu` field, then run the workflow.
 
-2. **Upload all these files**, keeping the folder structure:
-   - `check_storm.py`
-   - `check_recon.py`
-   - `state.json`
-   - `recon_state.json`
-   - `.github/workflows/nhc-watch.yml`
-   - `.github/workflows/nhc-recon-watch.yml`
+## If something breaks
+Each pipeline has retry logic (3 attempts per step) and sends you a Telegram message describing the failure if it can't recover. Check the **Actions** tab -> click the failed run -> expand the failing step for the full error log.
 
-   Easiest way: on the repo page, click "Add file" → "Upload files," and drag
-   the whole unzipped folder in from Finder — GitHub will preserve the
-   `.github/workflows/` structure.
-
-3. **Get an app password for sending email.** If you have Gmail:
-   - Go to myaccount.google.com → Security → 2-Step Verification (turn on if
-     not already) → App passwords
-   - Create one named "nhc-watch," copy the 16-character password
-   - (Any SMTP provider works — Gmail is just the most common)
-
-4. **Add secrets to the repo.** In your repo: Settings → Secrets and
-   variables → Actions → "New repository secret." Add each of these (both
-   workflows share the same five secrets):
-
-   | Name | Value |
-   |---|---|
-   | `SMTP_SERVER` | `smtp.gmail.com` (if using Gmail) |
-   | `SMTP_PORT` | `587` |
-   | `SMTP_USER` | your full Gmail address |
-   | `SMTP_PASS` | the 16-character app password from step 3 |
-   | `ALERT_TO` | `4092895745@vtext.com` (your Verizon gateway) |
-
-5. **Test each one manually.** Go to the "Actions" tab in your repo. You'll
-   see both "NHC Storm Watch" and "NHC Recon Watch" listed. For each: click
-   it → "Run workflow" → "Run workflow" button. Watch it run — click into it
-   to see the log. Since both state files start empty, the first run of each
-   should always fire a text — but note the very first Advisory run won't
-   have a "previous advisory" to compare against yet, so it'll skip the
-   "Moved: X mi" line that first time only. From the second new advisory
-   onward, that comparison will be there.
-
-   If no recon aircraft is currently flying, `check_recon.py` will find no
-   VDM data and exit quietly without texting — that's expected, not a
-   failure.
-
-6. **Check your phone.** You should get a text within a minute or two of the
-   runs finishing.
-
-Once step 5 works for both, you're done — they run themselves from then on,
-independently of each other.
-
-## Adjusting the check frequency
-
-Edit the `cron` line in the relevant workflow file. Cron times are in UTC,
-not Central.
-
-**Advisory** (`nhc-watch.yml`):
-- Every hour (default): `5 * * * *`
-- Every 30 minutes: `5,35 * * * *`
-
-**Recon** (`nhc-recon-watch.yml`):
-- Every 15 minutes (default): `*/15 * * * *`
-- Every 30 minutes: `5,35 * * * *`
-
-More frequent checks don't cause spam — you only get texted when something
-actually changes — but they do use more of your free Actions minutes. At the
-default settings for both watchers combined, you're using well under the
-2,000 free minutes/month.
-
-## If the storm dissipates and a new one forms
-
-Both URLs are tied to "Atlantic Storm #2" this season:
-- `check_storm.py`: `MIATCPAT2.shtml` (the `2` in `AT2`)
-- `check_recon.py`: `MIAREPNT2.shtml` (the `2` in `NT2`)
-
-If Bertha dissipates and the next system becomes Storm #3, update the `2` to
-`3` in both files (`ADVISORY_URL` / `RECON_URL` near the top of each) and
-commit the change.
-
-## Troubleshooting
-
-- **No text arrived:** Check the Actions tab → click the failed/latest run →
-  read the log. Most common cause is a typo in one of the secrets.
-- **"Failed to send text" in the log:** Almost always an SMTP auth issue —
-  double check the app password, and that 2-Step Verification is on for
-  Gmail (app passwords require it).
-- **First Advisory text is missing the "Moved: X mi" line:** Expected — there
-  was no previous advisory in state.json to compare against yet. It'll show
-  up starting with the second new advisory.
-- **Recon watcher ran but sent nothing, and that seems wrong:** Check the log
-  for "No VDM fix time found" (no plane currently flying — normal) vs "No new
-  fix" (same fix as last time — also normal) vs an actual error.
-- **Message got cut off on your phone:** Some carriers truncate long SMS from
-  email gateways. The Advisory text can run 300–400 characters with all the
-  comparison data — if it's getting cut, let me know and I can trim it down.
-
-
+## Repo visibility
+This repo is **public** (code is visible to anyone, but nobody can edit it or see your secrets -- those stay encrypted regardless of visibility). It's public specifically so the continuous Fast Watch loop can run on GitHub's unlimited free Actions minutes for public repos, instead of the 2,000 min/month cap on private repos.
