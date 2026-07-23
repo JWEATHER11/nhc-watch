@@ -228,11 +228,15 @@ def build_message(text):
 
     if no_development_expected(text):
         parts.append("Tropical cyclone formation is not expected during the next 7 days.")
+        parts.append("")
+        parts.append("View live: https://www.nhc.noaa.gov/gtwo.php?basin=atlc&fdays=7")
         return "\n".join(parts)
 
     areas = parse_areas(text)
     if not areas:
         parts.append("(No numbered disturbance areas parsed from this outlook -- see hurricanes.gov for the full text.)")
+        parts.append("")
+        parts.append("View live: https://www.nhc.noaa.gov/gtwo.php?basin=atlc&fdays=7")
         return "\n".join(parts)
 
     for area in areas:
@@ -242,6 +246,7 @@ def build_message(text):
         parts.append(f"7-day formation chance: {area['chance_7day_category']} ({area['chance_7day_pct']}%)")
         parts.append("")
 
+    parts.append("View live: https://www.nhc.noaa.gov/gtwo.php?basin=atlc&fdays=7")
     return "\n".join(parts).rstrip()
 
 
