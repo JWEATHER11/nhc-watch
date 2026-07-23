@@ -1,0 +1,50 @@
+name: SPC Fast Watch (Continuous)
+
+on:
+  schedule:
+    # Safety net only -- fires every 6h in case the self-restart chain
+    # ever breaks. Under normal operation the loop keeps itself running.
+    - cron: "30 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: spc-fast-watch
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run continuous SPC polling loop
+        env:
+          SPC_TELEGRAM_BOT_TOKEN: ${{ secrets.SPC_TELEGRAM_BOT_TOKEN }}
+          SPC_TELEGRAM_CHAT_ID: ${{ secrets.SPC_TELEGRAM_CHAT_ID }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python spc_fast_loop.py
+
+      - name: Final state commit (safety net)
+        if: always()
+        run: |
+          git config user.name "spc-fast-watch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add spc_outlook_state.json
+          git diff --quiet --cached || git commit -m "Update SPC outlook state [skip ci]"
+          git push || true
