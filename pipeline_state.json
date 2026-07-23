@@ -1,17 +1,22 @@
 {
   "last": {
-    "number": "17A",
+    "number": "18",
     "status_and_name": "Tropical Storm Bertha",
-    "lat": 29.9,
-    "lon": -93.8,
-    "wind_mph": 45,
-    "pressure_mb": 1004
+    "lat": 29.8,
+    "lon": -94.7,
+    "wind_mph": 40,
+    "pressure_mb": 1006
   },
-  "last_advisory_number": "17A",
+  "last_advisory_number": "18",
   "last_sent_discussion_number": 17,
   "last_sent_discussion_text": "The center of Bertha has been moving along or just offshore of southwestern Louisiana coast during the past few hours. Data from the Air Force Reserve reconnaissance aircraft suggest that the circulation is becoming increasingly elongated, likely due to the storm's persistent convective asymmetry. In fact, infrared satellite and radar images show almost all of the convection is located south of the center, and there is large region of heavy rain and embedded thunderstorms approaching the Texas coast. The initial intensity is held at 40 kt, but these winds are occurring offshore over the southern half of the circulation.\n\nThe storm has been moving erratically over the past 12 hours or so, but smoothing through the wobbles and potential center reformations yields a westward motion at 9 kt. Bertha is expected to move a little faster to the west, on the south side of a mid-level ridge, and that should bring the storm inland over Texas late this afternoon or evening. Due to the poor structure of Bertha and expected continued northerly vertical wind shear, little change is intensity is anticipated before the storm makes its final landfall in Texas. Bertha will likely become a weak remnant low or dissipate entirely in about 24 hours.",
   "pending_discussion": {
-    "advisory_num": "17A",
-    "advisory_label": "Advisory #17A"
+    "advisory_num": "18",
+    "advisory_label": "Advisory #18"
+  },
+  "pending_cone_verification": {
+    "advisory_num": "18",
+    "queued_at": 1784838803.3938239,
+    "full_message": "Issued: 400 PM CDT Thu Jul 23 2026\n\nTropical Storm Bertha -- Advisory #18\nCategory: Tropical Storm\nSustained wind: 40 mph (gusts 52 mph)\nMin pressure: 1006 mb\nMovement: WNW at 13 mph\nTrack change: moved 54 mi W since advisory #17A\nTropical storm-force winds extend: NE 0 mi, SE 120 mi, SW 120 mi, NW 0 mi\nWind vs previous advisory: -5 mph (weakened)\nPressure vs previous advisory: +2 mb (weakening signal)\nPeak forecast: 45 mph (Tropical Storm) at 10:00 AM, day 23\n\n(Next complete advisory at 1000 PM)"
   }
 }
