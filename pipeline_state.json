@@ -1,17 +1,22 @@
 {
   "last": {
-    "number": "16A",
+    "number": "17",
     "status_and_name": "Tropical Storm Bertha",
-    "lat": 29.5,
-    "lon": -92.4,
+    "lat": 29.6,
+    "lon": -93.2,
     "wind_mph": 45,
-    "pressure_mb": 1003
+    "pressure_mb": 1004
   },
-  "last_advisory_number": "16A",
+  "last_advisory_number": "17",
   "last_sent_discussion_number": 16,
   "last_sent_discussion_text": "Radar data and surface observations indicate that the center of Bertha has moved or re-formed offshore of the coast of southern Louisiana. The storm is producing a large area of intense convection over the southwestern quadrant, with the elongated low-level center at the northeastern edge of the convection. Surface observations and scatterometer data show that the maximum winds are near 40 kt and the minimum central pressure is near 1003 mb. Coastal Doppler radar data also shows that the mid-level center is displaced well to the southwest of the low-level center, and that there has been a persistent supercell thunderstorm with a mesocyclone moving westward through Bertha's southwestern quadrant.\n\nThe initial motion is a somewhat uncertain 270/11 kt. As before, the steering mechanism is a large and strong mid-tropospheric anticyclone over the south-central United States. Bertha should move along the southern periphery of this feature for the next day or so, with the center reaching the upper Texas or southwestern Louisiana coasts later today. After landfall, a west-southwestward motion is forecast until the cyclone dissipates. The new forecast track is similar to the previous track. Some erratic motion could occur before landfall due to possible center reformation caused by convective bursts.\n\nContinued moderate to strong northeasterly shear and dry air entrainment should prevent significant strengthening before landfall. Weakening is expected after landfall, and the cyclone is forecast to dissipated between 36-48 h.",
   "pending_discussion": {
-    "advisory_num": "16A",
-    "advisory_label": "Advisory #16A"
+    "advisory_num": "17",
+    "advisory_label": "Advisory #17"
+  },
+  "pending_cone_verification": {
+    "advisory_num": "17",
+    "queued_at": 1784817443.8195493,
+    "full_message": "Issued: 1000 AM CDT Thu Jul 23 2026\n\nTropical Storm Bertha -- Advisory #17\nCategory: Tropical Storm\nSustained wind: 45 mph (gusts 58 mph)\nMin pressure: 1004 mb\nMovement: W at 10 mph\nTrack change: moved 49 mi W since advisory #16A\nTropical storm-force winds extend: NE 20 mi, SE 140 mi, SW 140 mi, NW 0 mi\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: +1 mb (weakening signal)\nPeak forecast: 45 mph (Tropical Storm) at 4:00 AM, day 23\n\n(Next complete advisory at 400 PM)"
   }
 }
