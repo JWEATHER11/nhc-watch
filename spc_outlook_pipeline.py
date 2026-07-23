@@ -117,6 +117,11 @@ def graphic_url(day_key):
     return f"{base}?_cb={cache_buster}"
 
 
+def mcd_number(text):
+    m = re.search(r"Mesoscale Discussion\s+(\d+)", text, re.I)
+    return int(m.group(1)) if m else None
+
+
 def issued_time_from_header(text):
     m = re.search(r"^\s*\d{3,4}\s+[AP]M\s+[A-Z]{2,4}\s+\w{3}\s+\w{3}\s+\d{1,2}\s+\d{4}\s*$", text, re.M)
     return m.group(0).strip() if m else None
@@ -265,7 +270,12 @@ def process_day(day_key, state):
 
     print(f"[{day_key}] New content detected -- sending graphic first, then text.")
 
-    photo_url = graphic_url(day_key)
+    if day_key == "mcd":
+        num = mcd_number(text)
+        photo_url = f"https://www.spc.noaa.gov/products/md/md{num:04d}.gif?_cb={int(time.time())}" if num else None
+    else:
+        photo_url = graphic_url(day_key)
+
     if telegram_configured() and photo_url:
         try:
             send_telegram_photo(photo_url, caption=cfg["label"])
@@ -287,6 +297,85 @@ def process_day(day_key, state):
     save_state(state)
 
 
+# ===========================================================================
+# Watches -- SPC rotates the raw text through 10 slots (SEL0-SEL9), each
+# holding one of the 10 most recent watches. We fetch all 10 every cycle,
+# pull the actual watch number out of NHC's own text (never guessed), and
+# alert on any number we haven't already sent -- catches genuinely new
+# watches regardless of which slot they land in.
+# ===========================================================================
+WATCH_SLOTS = [f"SEL{n}" for n in range(10)]
+
+
+def watch_number_and_type(text):
+    m = re.search(r"(SEVERE\s+THUNDERSTORM|TORNADO)\s+WATCH\s+NUMBER\s+(\d+)", text, re.I)
+    if not m:
+        return None, None
+    watch_type = "Tornado" if "TORNADO" in m.group(1).upper() else "Severe Thunderstorm"
+    return watch_type, int(m.group(2))
+
+
+def watch_graphic_url(watch_num):
+    cache_buster = int(time.time())
+    return f"https://www.spc.noaa.gov/products/watch/ww{watch_num:04d}.gif?_cb={cache_buster}"
+
+
+def build_watch_message(watch_type, watch_num, text):
+    issued = issued_time_from_header(text)
+    parts = []
+    if issued:
+        parts.append(f"Issued: {issued}")
+        parts.append("")
+    parts.append(f"SPC {watch_type} Watch #{watch_num}")
+    parts.append("")
+    body = re.sub(r"\s+", " ", text).strip()
+    if len(body) > 3500:
+        body = body[:3500] + "..."
+    parts.append(body)
+    parts.append("")
+    parts.append(f"View live: https://www.spc.noaa.gov/products/watch/ww{watch_num:04d}.html")
+    return "\n".join(parts)
+
+
+def process_watches(state):
+    sent_numbers = set(state.get("watch_numbers_sent", []))
+    newly_sent = []
+
+    for slot in WATCH_SLOTS:
+        cache_buster = int(time.time())
+        iem_url = f"{IEM_BASE}?pil={slot}&_cb={cache_buster}"
+        text = _fetch_with_retries(iem_url, f"IEM:{slot}")
+        if not text:
+            continue
+
+        watch_type, watch_num = watch_number_and_type(text)
+        if watch_num is None or watch_num in sent_numbers:
+            continue
+
+        print(f"[watch] New watch detected: {watch_type} Watch #{watch_num}")
+
+        if telegram_configured():
+            try:
+                send_telegram_photo(watch_graphic_url(watch_num), caption=f"SPC {watch_type} Watch #{watch_num}")
+                print(f"[watch] Graphic sent for #{watch_num}.")
+            except Exception as e:
+                print(f"[watch] Graphic send failed (non-fatal): {e}")
+
+        message = build_watch_message(watch_type, watch_num, text)
+        try:
+            deliver(message, subject=f"SPC {watch_type} Watch #{watch_num}")
+            print(f"[watch] Sent successfully for #{watch_num}.")
+            newly_sent.append(watch_num)
+        except Exception as e:
+            send_failure_alert(f"Watch #{watch_num} delivery", str(e))
+
+    if newly_sent:
+        sent_numbers.update(newly_sent)
+        # Keep the set from growing forever -- only need recent history to dedupe against.
+        state["watch_numbers_sent"] = sorted(sent_numbers)[-200:]
+        save_state(state)
+
+
 def main():
     state = load_state()
     for day_key in OUTLOOKS:
@@ -294,6 +383,11 @@ def main():
             process_day(day_key, state)
         except Exception as e:
             print(f"[{day_key}] Unexpected error (non-fatal, continuing to next day): {e}")
+
+    try:
+        process_watches(state)
+    except Exception as e:
+        print(f"[watch] Unexpected error (non-fatal): {e}")
 
 
 if __name__ == "__main__":
