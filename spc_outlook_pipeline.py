@@ -58,7 +58,16 @@ OUTLOOKS = {
         "graphic": "https://www.spc.noaa.gov/products/exper/day4-8/day48prob.gif",
         "label": "SPC Day 4-8 Severe Weather Outlook",
     },
+    "mcd": {
+        "pil": "SWOMCD",
+        "nhc_fallback": "https://www.spc.noaa.gov/products/md/latest.html?text",
+        "graphic": None,  # MCDs don't have a stable "latest" graphic URL like the outlooks do
+        "label": "SPC Mesoscale Discussion",
+    },
 }
+
+# Fire Weather Outlook (SWOFWO / FWDY1 etc.) is deliberately NOT tracked
+# here -- convective/severe weather products only, per explicit instruction.
 
 STATE_FILE = Path(__file__).parent / "spc_outlook_state.json"
 MAX_ATTEMPTS = 3
@@ -101,8 +110,11 @@ def fetch_outlook_text(day_key):
 
 
 def graphic_url(day_key):
+    base = OUTLOOKS[day_key]["graphic"]
+    if not base:
+        return None
     cache_buster = int(time.time())
-    return f"{OUTLOOKS[day_key]['graphic']}?_cb={cache_buster}"
+    return f"{base}?_cb={cache_buster}"
 
 
 def issued_time_from_header(text):
@@ -253,9 +265,10 @@ def process_day(day_key, state):
 
     print(f"[{day_key}] New content detected -- sending graphic first, then text.")
 
-    if telegram_configured():
+    photo_url = graphic_url(day_key)
+    if telegram_configured() and photo_url:
         try:
-            send_telegram_photo(graphic_url(day_key), caption=cfg["label"])
+            send_telegram_photo(photo_url, caption=cfg["label"])
             print(f"[{day_key}] Graphic sent.")
         except Exception as e:
             print(f"[{day_key}] Graphic send failed (non-fatal): {e}")
