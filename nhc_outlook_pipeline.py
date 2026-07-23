@@ -70,6 +70,37 @@ def fetch_outlook():
     return None, "FAILED"
 
 
+def build_outlook_graphic_url():
+    """Atlantic 7-Day Outlook graphic -- confirmed live URL. NHC overwrites
+    this same file with the current graphic; a cache-buster query param
+    forces Telegram to fetch fresh every time instead of reusing a
+    previously cached copy of this same URL."""
+    cache_buster = int(time.time())
+    return f"https://www.nhc.noaa.gov/xgtwo/resize/xgtwo_atl_7d0_w1920.png?_cb={cache_buster}"
+
+
+def send_telegram_photo(photo_url, caption=""):
+    bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    payload = json.dumps({"chat_id": chat_id, "photo": photo_url, "caption": caption[:1024]}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    last_err = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                if result.get("ok"):
+                    return
+                last_err = result.get("description", "Unknown Telegram error")
+        except Exception as e:
+            last_err = str(e)
+        print(f"[Telegram photo] Attempt {attempt} failed: {last_err}")
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_DELAY_SEC)
+    print(f"Outlook graphic send failed after {MAX_ATTEMPTS} attempts (non-fatal): {last_err}")
+
+
 def issued_time_from_header(text):
     m = re.search(r"^\s*\d{3,4}\s+[AP]M\s+[A-Z]{2,4}\s+\w{3}\s+\w{3}\s+\d{1,2}\s+\d{4}\s*$", text, re.M)
     return m.group(0).strip() if m else None
@@ -230,6 +261,13 @@ def main():
 
     message = build_message(text)
     print(f"Outlook message:\n{message}")
+
+    if telegram_configured():
+        try:
+            send_telegram_photo(build_outlook_graphic_url(), caption="NHC Atlantic 7-Day Tropical Weather Outlook")
+            print("Outlook graphic sent.")
+        except Exception as e:
+            print(f"Outlook graphic send failed (non-fatal): {e}")
 
     try:
         deliver(message, subject="NHC 7-Day Tropical Weather Outlook")
