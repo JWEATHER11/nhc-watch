@@ -463,13 +463,16 @@ def send_email_sms_fallback(text, subject="NHC Update"):
 
 
 def deliver(text, subject="NHC Update"):
-    if telegram_configured():
-        send_telegram(text)
-        print("Delivered via Telegram.")
-    else:
-        print("Telegram not configured -- falling back to email-to-SMS.")
-        send_email_sms_fallback(text, subject=subject)
-        print("Delivered via email-to-SMS fallback.")
+    """Telegram only -- no SMS/email fallback, per explicit instruction
+    (GitHub Actions itself never texts anyone; this fallback was the
+    actual source of unwanted texts, now removed everywhere). Raises if
+    Telegram isn't configured, so callers correctly don't mark things as
+    sent."""
+    if not telegram_configured():
+        print("Telegram not configured -- skipping (no SMS fallback, per instruction).")
+        raise RuntimeError("Telegram not configured (SMS fallback disabled per instruction)")
+    send_telegram(text)
+    print("Delivered via Telegram.")
 
 
 def send_failure_alert(context, error):
