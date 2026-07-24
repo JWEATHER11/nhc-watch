@@ -58,16 +58,11 @@ OUTLOOKS = {
         "graphic": "https://www.spc.noaa.gov/products/exper/day4-8/day48prob.gif",
         "label": "SPC Day 4-8 Severe Weather Outlook",
     },
-    "mcd": {
-        "pil": "SWOMCD",
-        "nhc_fallback": "https://www.spc.noaa.gov/products/md/latest.html?text",
-        "graphic": None,  # MCDs don't have a stable "latest" graphic URL like the outlooks do
-        "label": "SPC Mesoscale Discussion",
-    },
 }
 
-# Fire Weather Outlook (SWOFWO / FWDY1 etc.) is deliberately NOT tracked
-# here -- convective/severe weather products only, per explicit instruction.
+# Deliberately NOT tracked: Fire Weather Outlook (convective outlooks
+# only), and Mesoscale Discussions (outlooks only, per explicit
+# instruction -- MCD tracking code removed).
 
 STATE_FILE = Path(__file__).parent / "spc_outlook_state.json"
 MAX_ATTEMPTS = 3
@@ -115,11 +110,6 @@ def graphic_url(day_key):
         return None
     cache_buster = int(time.time())
     return f"{base}?_cb={cache_buster}"
-
-
-def mcd_number(text):
-    m = re.search(r"Mesoscale Discussion\s+(\d+)", text, re.I)
-    return int(m.group(1)) if m else None
 
 
 def issued_time_from_header(text):
@@ -216,12 +206,15 @@ def send_email_sms_fallback(text, subject="SPC Outlook Update"):
 
 
 def deliver(text, subject="SPC Outlook Update"):
-    if telegram_configured():
-        send_telegram(text)
-        print("Delivered via Telegram (SPC chat).")
-    else:
-        send_email_sms_fallback(text, subject=subject)
-        print("Delivered via email-to-SMS fallback.")
+    """Telegram only, no SMS/email fallback for SPC -- per instruction.
+    Raises if Telegram isn't set up yet, so callers correctly do NOT mark
+    the item as sent, and it'll naturally go out once Telegram is
+    configured rather than being silently lost."""
+    if not telegram_configured():
+        print("Telegram not configured for SPC yet -- skipping (no SMS fallback). Will send once Telegram is set up.")
+        raise RuntimeError("SPC Telegram not configured (SMS fallback disabled per instruction)")
+    send_telegram(text)
+    print("Delivered via Telegram (SPC chat).")
 
 
 def send_failure_alert(context, error):
@@ -270,12 +263,7 @@ def process_day(day_key, state):
 
     print(f"[{day_key}] New content detected -- sending graphic first, then text.")
 
-    if day_key == "mcd":
-        num = mcd_number(text)
-        photo_url = f"https://www.spc.noaa.gov/products/md/md{num:04d}.gif?_cb={int(time.time())}" if num else None
-    else:
-        photo_url = graphic_url(day_key)
-
+    photo_url = graphic_url(day_key)
     if telegram_configured() and photo_url:
         try:
             send_telegram_photo(photo_url, caption=cfg["label"])
@@ -337,7 +325,14 @@ def build_watch_message(watch_type, watch_num, text):
     return "\n".join(parts)
 
 
+def is_pds(text):
+    return bool(re.search(r"PARTICULARLY\s+DANGEROUS\s+SITUATION", text, re.I))
+
+
 def process_watches(state):
+    """Only PDS (Particularly Dangerous Situation) watches actually get
+    sent -- routine watches are tracked as seen (so we don't re-check
+    them every loop) but deliberately not delivered, per instruction."""
     sent_numbers = set(state.get("watch_numbers_sent", []))
     newly_sent = []
 
@@ -352,7 +347,12 @@ def process_watches(state):
         if watch_num is None or watch_num in sent_numbers:
             continue
 
-        print(f"[watch] New watch detected: {watch_type} Watch #{watch_num}")
+        if not is_pds(text):
+            print(f"[watch] {watch_type} Watch #{watch_num} is routine (not PDS) -- skipping, per instruction.")
+            newly_sent.append(watch_num)
+            continue
+
+        print(f"[watch] New PDS {watch_type} Watch #{watch_num} detected.")
 
         if telegram_configured():
             try:
