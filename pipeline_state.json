@@ -1,17 +1,22 @@
 {
   "last": {
-    "number": "18A",
-    "status_and_name": "Tropical Depression Bertha",
-    "lat": 29.9,
-    "lon": -95.3,
+    "number": "19",
+    "status_and_name": "Remnants Of Bertha",
+    "lat": 30.0,
+    "lon": -96.0,
     "wind_mph": 35,
-    "pressure_mb": 1007
+    "pressure_mb": 1008
   },
-  "last_advisory_number": "18A",
+  "last_advisory_number": "19",
   "last_sent_discussion_number": 18,
   "last_sent_discussion_text": "Bertha has been moving along the northern Gulf coast much of the day, and it now appears to be inland over far eastern Texas. The storm remains very asymmetric, with nearly all of the deep convection over the southwest quadrant, which is now moving inland over Texas. An ASCAT-C pass from a few hours ago suggest that the maximum winds have decreased. Based on that data, surface observations, and its degraded appearance in satellite images, the initial wind speed is lowered to 35 kt.\n\nThe poor organization of Bertha makes it hard to compute its initial motion. In fact, the storm is becoming increasingly elongated and might be opening up into a trough. Our best guess of the initial motion is west-northwestward at 11 kt. However. the global models suggest that the center could reform again to the south during the next few hours. Regardless, Bertha is expected to move across eastern Texas this evening, and it forecast to dissipate tonight or on Friday.",
   "pending_discussion": {
-    "advisory_num": "18A",
-    "advisory_label": "Advisory #18A"
+    "advisory_num": "19",
+    "advisory_label": "Advisory #19"
+  },
+  "pending_cone_verification": {
+    "advisory_num": "19",
+    "queued_at": 1784860446.599518,
+    "full_message": "Issued: 1000 PM CDT Thu Jul 23 2026\n\nRemnants Of Bertha -- Advisory #19\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 46 mph)\nMin pressure: 1008 mb\nMovement: W at 14 mph\nTrack change: moved 42 mi W since advisory #18A\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: +1 mb (weakening signal)\nPeak forecast: 40 mph (Tropical Storm) at 4:00 PM, day 23"
   }
 }
