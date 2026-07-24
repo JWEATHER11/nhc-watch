@@ -28,6 +28,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -224,6 +225,32 @@ def send_failure_alert(context, error):
         print(f"Could not even send the failure alert: {e}", file=sys.stderr)
 
 
+# SPC's real, fixed daily issuance schedule (UTC hour, minute) for each
+# product. Used to tell you exactly when the next one is coming, in
+# Beaumont TX time (CDT, UTC-5 in summer).
+ISSUANCE_SCHEDULE_UTC = {
+    "day1": [(1, 0), (6, 0), (13, 0), (16, 30), (20, 0)],
+    "day2": [(6, 0), (17, 30)],
+    "day3": [(7, 30)],
+    "day48": [(9, 0)],
+}
+
+CENTRAL_UTC_OFFSET = 5  # CDT (UTC-5). Change to 6 for CST (winter).
+
+
+def next_issuance_central(day_key):
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    candidates = []
+    for day_offset in (0, 1):
+        base = today + timedelta(days=day_offset)
+        for hour, minute in ISSUANCE_SCHEDULE_UTC[day_key]:
+            candidates.append(base + timedelta(hours=hour, minutes=minute))
+    upcoming = min(c for c in candidates if c > now_utc)
+    central = upcoming - timedelta(hours=CENTRAL_UTC_OFFSET)
+    return central.strftime("%-I:%M %p").lstrip("0") + " CDT " + central.strftime("%a")
+
+
 def build_message(day_key, text):
     cfg = OUTLOOKS[day_key]
     issued = issued_time_from_header(text)
@@ -243,6 +270,13 @@ def build_message(day_key, text):
     if summary:
         parts.append(summary)
         parts.append("")
+
+    try:
+        next_time = next_issuance_central(day_key)
+        parts.append(f"Next {cfg['label']}: {next_time}")
+        parts.append("")
+    except Exception as e:
+        print(f"[{day_key}] Could not compute next issuance time (non-fatal): {e}")
 
     parts.append(f"View live: {cfg['nhc_fallback'].split('?')[0].replace('.html?text', '.html').replace('?text', '')}")
     return "\n".join(parts).rstrip()
