@@ -265,13 +265,12 @@ def send_email_sms_fallback(text, subject="Recon Update"):
 
 
 def deliver(text, subject="Recon Update"):
-    if telegram_configured():
-        send_telegram(text)
-        print("Delivered via Telegram.")
-    else:
-        print("Telegram not configured -- falling back to email-to-SMS.")
-        send_email_sms_fallback(text, subject=subject)
-        print("Delivered via email-to-SMS fallback.")
+    """Telegram only -- no SMS/email fallback, per explicit instruction."""
+    if not telegram_configured():
+        print("Telegram not configured -- skipping (no SMS fallback, per instruction).")
+        raise RuntimeError("Telegram not configured (SMS fallback disabled per instruction)")
+    send_telegram(text)
+    print("Delivered via Telegram.")
 
 
 def send_failure_alert(context, error):
