@@ -27,6 +27,7 @@ import smtplib
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
@@ -38,25 +39,25 @@ OUTLOOKS = {
     "day1": {
         "pil": "SWODY1",
         "nhc_fallback": "https://www.spc.noaa.gov/products/outlook/day1otlk.html?text",
-        "graphic": "https://www.spc.noaa.gov/products/outlook/day1otlk.gif",
+        "which": "1C",
         "label": "SPC Day 1 Convective Outlook",
     },
     "day2": {
         "pil": "SWODY2",
         "nhc_fallback": "https://www.spc.noaa.gov/products/outlook/day2otlk.html?text",
-        "graphic": "https://www.spc.noaa.gov/products/outlook/day2otlk.gif",
+        "which": "2C",
         "label": "SPC Day 2 Convective Outlook",
     },
     "day3": {
         "pil": "SWODY3",
         "nhc_fallback": "https://www.spc.noaa.gov/products/outlook/day3otlk.html?text",
-        "graphic": "https://www.spc.noaa.gov/products/outlook/day3otlk.gif",
+        "which": "3C",
         "label": "SPC Day 3 Convective Outlook",
     },
     "day48": {
         "pil": "SWOD48",
         "nhc_fallback": "https://www.spc.noaa.gov/products/exper/day4-8/day4-8.html?text",
-        "graphic": "https://www.spc.noaa.gov/products/exper/day4-8/day48prob.gif",
+        "which": "48C",
         "label": "SPC Day 4-8 Severe Weather Outlook",
     },
 }
@@ -106,11 +107,21 @@ def fetch_outlook_text(day_key):
 
 
 def graphic_url(day_key):
-    base = OUTLOOKS[day_key]["graphic"]
-    if not base:
-        return None
-    cache_buster = int(time.time())
-    return f"{base}?_cb={cache_buster}"
+    """SPC's own site moved to a layered interactive map in their March
+    2026 redesign -- no more simple static image to hotlink. IEM's
+    autoplot #220 generates the equivalent categorical graphic on demand
+    and reliably finds the latest issuance for a given 'valid' timestamp
+    (confirmed: https://mesonet.agron.iastate.edu/plotting/auto/?q=220),
+    so we use that instead."""
+    which = OUTLOOKS[day_key]["which"]
+    now_utc = datetime.now(timezone.utc)
+    valid_str = now_utc.strftime("%Y-%m-%d %H%M")
+    encoded_valid = urllib.parse.quote(valid_str)
+    return (
+        f"https://mesonet.agron.iastate.edu/plotting/auto/plot/220/"
+        f"which:{which}::cat:categorical::t:state::csector:conus::"
+        f"valid:{encoded_valid}::dpi:100.png"
+    )
 
 
 def issued_time_from_header(text):
