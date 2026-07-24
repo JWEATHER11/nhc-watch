@@ -40,24 +40,28 @@ OUTLOOKS = {
         "pil": "SWODY1",
         "nhc_fallback": "https://www.spc.noaa.gov/products/outlook/day1otlk.html?text",
         "which": "1C",
+        "cat": "categorical",
         "label": "SPC Day 1 Convective Outlook",
     },
     "day2": {
         "pil": "SWODY2",
         "nhc_fallback": "https://www.spc.noaa.gov/products/outlook/day2otlk.html?text",
         "which": "2C",
+        "cat": "categorical",
         "label": "SPC Day 2 Convective Outlook",
     },
     "day3": {
         "pil": "SWODY3",
         "nhc_fallback": "https://www.spc.noaa.gov/products/outlook/day3otlk.html?text",
         "which": "3C",
+        "cat": "categorical",
         "label": "SPC Day 3 Convective Outlook",
     },
     "day48": {
         "pil": "SWOD48",
         "nhc_fallback": "https://www.spc.noaa.gov/products/exper/day4-8/day4-8.html?text",
-        "which": "48C",
+        "which": "48",
+        "cat": "any",
         "label": "SPC Day 4-8 Severe Weather Outlook",
     },
 }
@@ -114,12 +118,13 @@ def graphic_url(day_key):
     (confirmed: https://mesonet.agron.iastate.edu/plotting/auto/?q=220),
     so we use that instead."""
     which = OUTLOOKS[day_key]["which"]
+    cat = OUTLOOKS[day_key]["cat"]
     now_utc = datetime.now(timezone.utc)
     valid_str = now_utc.strftime("%Y-%m-%d %H%M")
     encoded_valid = urllib.parse.quote(valid_str)
     return (
         f"https://mesonet.agron.iastate.edu/plotting/auto/plot/220/"
-        f"which:{which}::cat:categorical::t:state::csector:conus::"
+        f"which:{which}::cat:{cat}::t:state::csector:conus::"
         f"valid:{encoded_valid}::dpi:100.png"
     )
 
