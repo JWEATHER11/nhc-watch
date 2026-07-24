@@ -9,10 +9,5 @@
   },
   "last_advisory_number": "19",
   "last_sent_discussion_number": 19,
-  "last_sent_discussion_text": "Surface observations over eastern Texas indicate that Bertha no longer has a well-defined circulation, and has opened up into a trough. Therefore, the system has dissipated, and this will be the last advisory.\n\nBertha's remnants will likely continue to produce some locally heavy rainfall over portions of eastern and southern Texas, where isolated flash flooding is possible overnight.",
-  "pending_cone_verification": {
-    "advisory_num": "19",
-    "queued_at": 1784860446.599518,
-    "full_message": "Issued: 1000 PM CDT Thu Jul 23 2026\n\nRemnants Of Bertha -- Advisory #19\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 46 mph)\nMin pressure: 1008 mb\nMovement: W at 14 mph\nTrack change: moved 42 mi W since advisory #18A\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: +1 mb (weakening signal)\nPeak forecast: 40 mph (Tropical Storm) at 4:00 PM, day 23"
-  }
+  "last_sent_discussion_text": "Surface observations over eastern Texas indicate that Bertha no longer has a well-defined circulation, and has opened up into a trough. Therefore, the system has dissipated, and this will be the last advisory.\n\nBertha's remnants will likely continue to produce some locally heavy rainfall over portions of eastern and southern Texas, where isolated flash flooding is possible overnight."
 }
