@@ -91,14 +91,49 @@ def strip_unwanted_sections(text):
     return text
 
 
+def reflow_text(text):
+    """NWS text products are hard-wrapped at a fixed width (old teletype
+    convention) -- this rejoins wrapped lines back into natural, readable
+    paragraphs for Telegram, while preserving real structure: section
+    headers (.DISCUSSION...), separators (&&, $$), "Issued at" lines, and
+    bullet points (each "- ..." item stays its own line, with its
+    wrapped continuation lines folded back into it)."""
+    lines = text.split("\n")
+    output_lines = []
+    buffer = []
+
+    def flush_buffer():
+        if buffer:
+            output_lines.append(" ".join(buffer))
+            buffer.clear()
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            flush_buffer()
+            output_lines.append("")
+        elif stripped.startswith(".") or stripped in ("&&", "$$") or re.match(r"^Issued at", stripped):
+            flush_buffer()
+            output_lines.append(stripped)
+        elif stripped.startswith("- "):
+            flush_buffer()
+            buffer.append(stripped)
+        else:
+            buffer.append(stripped)
+    flush_buffer()
+    return "\n".join(output_lines)
+
+
 def clean_body(text):
     """Strips the WMO/AFOS routing header lines, keeps everything from
     the product title onward, collapses the page-break control character
-    IEM includes at the end, and removes the Aviation/Marine/Fire Weather
-    sections entirely per instruction."""
+    IEM includes at the end, removes the Aviation/Marine/Fire Weather
+    sections entirely per instruction, and reflows the hard-wrapped text
+    into natural paragraphs for readability."""
     text = text.split("\x01")[-1] if "\x01" in text else text
     text = text.replace("\x03", "").strip()
     text = strip_unwanted_sections(text)
+    text = reflow_text(text)
     text = re.sub(r"\n{3,}", "\n\n", text)  # collapse extra blank lines left behind
     return text.strip()
 
