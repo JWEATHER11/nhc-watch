@@ -22,8 +22,7 @@ National Weather Service Houston/Galveston TX
 The National Weather Service in Houston/Galveston has issued a
 
 * Severe Thunderstorm Warning for...
-  Southeastern Jefferson County in southeastern Texas...
-  Southern Orange County in southeastern Texas...
+  Central Jefferson County in southeastern Texas, including Beaumont and China...
 
 * Until 1115 AM CDT.
 
@@ -36,7 +35,7 @@ The National Weather Service in Houston/Galveston has issued a
            to roofs, siding, and trees.
 
 * Locations impacted include...
-  Port Arthur, Groves, Nederland, Bridge City and Orangefield.
+  Beaumont, China, Nome and Hamshire.
 
 PRECAUTIONARY/PREPAREDNESS ACTIONS...
 For your protection move to an interior room on the lowest floor of a
@@ -44,8 +43,8 @@ building.
 
 &&
 
-LAT...LON 2995 9403 2994 9410 2988 9411 2987 9403
-TIME...MOT...LOC 1529Z 224DEG 18KT 2991 9408
+LAT...LON 3015 9420 3015 9405 3005 9405 3005 9420
+TIME...MOT...LOC 1529Z 224DEG 18KT 3010 9412
 HAIL...1.00IN
 WIND...60MPH
 THUNDERSTORM DAMAGE THREAT...SIGNIFICANT
@@ -194,7 +193,7 @@ def main():
 
     coords = parse_polygon_coords(SAMPLE_RAW)
     geoapify_key = os.environ["GEOAPIFY_API_KEY"]
-    color = "#ffd400"  # Severe Thunderstorm = yellow
+    color = "%23ffd400"  # Severe Thunderstorm = yellow (URL-encoded #)
     coord_str = ",".join(f"{lon},{lat}" for lon, lat in coords)
     geometry = f"polygon:{coord_str};fillcolor:{color};fillopacity:0.35;linecolor:{color};linewidth:3"
     graphic_url = (
