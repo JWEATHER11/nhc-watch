@@ -194,13 +194,16 @@ def main():
 
     coords = parse_polygon_coords(SAMPLE_RAW)
     geoapify_key = os.environ["GEOAPIFY_API_KEY"]
-    geometry = "polygon:" + ",".join(f"{lon},{lat}" for lon, lat in coords)
+    color = "#ffd400"  # Severe Thunderstorm = yellow
+    coord_str = ",".join(f"{lon},{lat}" for lon, lat in coords)
+    geometry = f"polygon:{coord_str};fillcolor:{color};fillopacity:0.35;linecolor:{color};linewidth:3"
     graphic_url = (
         f"https://maps.geoapify.com/v1/staticmap?style=osm-carto"
         f"&width=800&height=600&geometry={geometry}&apiKey={geoapify_key}"
     )
     photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-    photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": "Example: real warning polygon on the new map"}).encode("utf-8")
+    title = "\u26a0\ufe0f SEVERE THUNDERSTORM WARNING \u26a0\ufe0f\nNWS Houston/Galveston [PRACTICE ONLY]"
+    photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": title}).encode("utf-8")
     photo_req = urllib.request.Request(photo_url, data=photo_payload, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(photo_req, timeout=20) as resp:
         print("Photo result:", json.loads(resp.read().decode("utf-8")))
