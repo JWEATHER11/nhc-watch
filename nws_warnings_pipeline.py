@@ -83,6 +83,45 @@ def vtec_event_number(text):
     return m.group(1) if m else None
 
 
+# Bounding box covering the full Houston-to-Jasper, Beaumont/Port
+# Arthur/Orange-to-Lake Charles region -- confirmed working via IEM's
+# radmap.php tool, which has a genuine documented "sbw" (Storm Based
+# Warning) layer option.
+REGION_BBOX = "-95.5,29.0,-92.5,31.0"
+
+
+def build_warning_graphic_url():
+    cache_buster = int(time.time())
+    return (
+        f"https://mesonet.agron.iastate.edu/GIS/radmap.php?"
+        f"width=800&height=600&bbox={REGION_BBOX}"
+        f"&layers[]=uscounties&layers[]=nexrad&layers[]=sbw"
+        f"&_cb={cache_buster}"
+    )
+
+
+def send_telegram_photo(photo_url, caption=""):
+    bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
+    chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    payload = json.dumps({"chat_id": chat_id, "photo": photo_url, "caption": caption[:1024]}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    last_err = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                if result.get("ok"):
+                    return
+                last_err = result.get("description", "Unknown Telegram error")
+        except Exception as e:
+            last_err = str(e)
+        print(f"[Telegram photo] Attempt {attempt} failed: {last_err}")
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_DELAY_SEC)
+    print(f"Graphic send failed after {MAX_ATTEMPTS} attempts (non-fatal, text still sends): {last_err}")
+
+
 def clean_body(text):
     text = text.split("\x01")[-1] if "\x01" in text else text
     text = text.replace("\x03", "").strip()
@@ -177,6 +216,14 @@ def process_warning(warn_key, office_key, state):
         return
 
     print(f"[{pil}] New warning detected (ETN={etn}) -- sending.")
+
+    if telegram_configured():
+        try:
+            send_telegram_photo(build_warning_graphic_url(), caption=f"{OFFICES[office_key]} {WARNING_TYPES[warn_key]['label']}")
+            print(f"[{pil}] Graphic sent.")
+        except Exception as e:
+            print(f"[{pil}] Graphic send failed (non-fatal): {e}")
+
     message = build_message(warn_key, office_key, text)
     print(f"[{pil}] Message:\n{message[:400]}...")
 
