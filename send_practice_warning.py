@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """One-time script: sends a practice/sample Severe Thunderstorm Warning
 through the exact same cleaning/reflow logic as nws_warnings_pipeline.py,
-so the person can review the formatting and decide what else to trim or
-add. Not part of the regular continuous system -- run once, then delete."""
+so the person can review the formatting. Not part of the regular
+continuous system -- run once, then delete."""
 
 import json
 import os
 import re
 import urllib.request
+import time as _time
 
 SAMPLE_RAW = """123
 WUUS54 KHGX 261530
@@ -69,9 +70,6 @@ def reflow_text(text):
         if not stripped:
             flush_buffer()
             output_lines.append("")
-        elif stripped.startswith("*"):
-            flush_buffer()
-            buffer.append(stripped)
         else:
             buffer.append(stripped)
     flush_buffer()
@@ -85,33 +83,80 @@ def extract_tag_line(text):
     return None
 
 
-def main():
-    text = SAMPLE_RAW
-    idx = text.find("BULLETIN")
-    text = text[idx:]
+def strip_boilerplate_lines(text):
+    text = re.sub(r"^BULLETIN\s*-\s*EAS ACTIVATION REQUESTED\s*\n?", "", text, flags=re.M)
+    text = re.sub(r"^The National Weather Service in .+ has issued a\s*\n?", "", text, flags=re.M)
+    return text
+
+
+def strip_precautionary_section(text):
+    return re.sub(
+        r"\n\s*PRECAUTIONARY/PREPAREDNESS ACTIONS\.\.\.[\s\S]*?(?=\n\s*\n|\Z)",
+        "",
+        text,
+    )
+
+
+def convert_times(text):
+    def repl(m):
+        digits, ampm = m.group(1), m.group(2)
+        if len(digits) == 3:
+            digits = "0" + digits
+        return f"{int(digits[:2])}:{digits[2:]} {ampm}"
+    return re.sub(
+        r"\b(\d{3,4})\s?(AM|PM)\s+(?:CDT|CST|EDT|EST|MDT|MST|PDT|PST)\b",
+        repl,
+        text,
+    )
+
+
+def strip_bullet_markers(text):
+    return re.sub(r"^\*\s*", "", text, flags=re.M)
+
+
+def relocate_warning_for_block(text):
+    m = re.search(r"[A-Za-z ]+ Warning for\.\.\.\n[\s\S]*?(?=\n\s*\n)", text)
+    if not m:
+        return text
+    block = text[m.start():m.end()].strip()
+    remainder = (text[:m.start()] + text[m.end():]).strip()
+    return remainder + "\n\n" + block
+
+
+def clean_body(text):
+    m = re.search(r"/[OX]\.\w+\.\w{4}\.\w{2}\.\w\.\d{4}\.[^\n]*\n(?:/[^\n]*\n)*", text)
+    if m:
+        text = text[m.end():]
+    elif "\x01" in text:
+        text = text.split("\x01")[-1]
+    text = text.replace("\x03", "").strip()
+
     tag_line = extract_tag_line(text)
     text = text.split("&&")[0].strip()
+    text = strip_boilerplate_lines(text)
+    text = strip_precautionary_section(text)
+    text = relocate_warning_for_block(text)
+    text = convert_times(text)
+    text = strip_bullet_markers(text)
     text = reflow_text(text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text, tag_line
 
+
+def main():
+    body, tag_line = clean_body(SAMPLE_RAW)
     parts = []
     if tag_line:
         parts.append(tag_line)
         parts.append("")
-    parts.append("Issued: 1030 AM CDT Sun Jul 26 2026")
+    parts.append("Issued: 10:30 AM Sun Jul 26 2026")
     parts.append("")
-    parts.append("[PRACTICE/SAMPLE ONLY -- not a real warning] NWS Houston/Galveston -- Severe Thunderstorm Warning")
-    parts.append("")
-    parts.append(text)
+    parts.append(body)
     message = "\n".join(parts)
 
     bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
 
-    # Send the example graphic first (radar + storm-based warning
-    # polygon overlay, confirmed working IEM radmap.php tool), then the
-    # text right after.
-    import time as _time
     cache_buster = int(_time.time())
     graphic_url = (
         f"https://mesonet.agron.iastate.edu/GIS/radmap.php?"
@@ -120,7 +165,7 @@ def main():
         f"&_cb={cache_buster}"
     )
     photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-    photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": "Example graphic: live radar + storm-based warning polygon overlay for your region"}).encode("utf-8")
+    photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": "Example graphic"}).encode("utf-8")
     photo_req = urllib.request.Request(photo_url, data=photo_payload, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(photo_req, timeout=20) as resp:
         print("Photo result:", json.loads(resp.read().decode("utf-8")))
@@ -129,8 +174,7 @@ def main():
     payload = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=20) as resp:
-        result = json.loads(resp.read().decode("utf-8"))
-        print("Text result:", result)
+        print("Text result:", json.loads(resp.read().decode("utf-8")))
 
 
 if __name__ == "__main__":
