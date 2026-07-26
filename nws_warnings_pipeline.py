@@ -101,25 +101,23 @@ def build_warning_graphic_url():
 
 
 def send_telegram_photo(photo_url, caption=""):
+    """Single attempt, short timeout, no retries -- the graphic is
+    best-effort only and must NEVER meaningfully delay the text. If it
+    fails or is slow, this gives up fast so the text send right after it
+    is never held up."""
     bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
     url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
     payload = json.dumps({"chat_id": chat_id, "photo": photo_url, "caption": caption[:1024]}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    last_err = None
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                if result.get("ok"):
-                    return
-                last_err = result.get("description", "Unknown Telegram error")
-        except Exception as e:
-            last_err = str(e)
-        print(f"[Telegram photo] Attempt {attempt} failed: {last_err}")
-        if attempt < MAX_ATTEMPTS:
-            time.sleep(RETRY_DELAY_SEC)
-    print(f"Graphic send failed after {MAX_ATTEMPTS} attempts (non-fatal, text still sends): {last_err}")
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            if result.get("ok"):
+                return
+            print(f"Graphic send failed (non-fatal, text sends regardless): {result.get('description', 'Unknown Telegram error')}")
+    except Exception as e:
+        print(f"Graphic send failed (non-fatal, text sends regardless): {e}")
 
 
 def reflow_text(text):
@@ -278,10 +276,22 @@ def process_warning(warn_key, office_key, state):
         print(f"[{pil}] No change -- not sending.")
         return
 
-    print(f"[{pil}] New warning detected (ETN={etn}) -- sending TEXT first, always, no matter what.")
+    print(f"[{pil}] New warning detected (ETN={etn}) -- sending.")
 
-    # Text is the priority and must never be delayed or blocked by the
-    # graphic -- send it immediately, first thing, every time.
+    # Graphic goes first when it works, but it's a single fast attempt
+    # (see send_telegram_photo) wrapped in try/except -- if it's slow,
+    # fails, or errors in ANY way, we fall through immediately and the
+    # text below still sends no matter what. Nothing about the graphic
+    # can ever block, delay, or prevent the text.
+    if telegram_configured():
+        try:
+            send_telegram_photo(build_warning_graphic_url(), caption=f"{OFFICES[office_key]} {WARNING_TYPES[warn_key]['label']}")
+            print(f"[{pil}] Graphic sent.")
+        except Exception as e:
+            print(f"[{pil}] Graphic failed (non-fatal, text sends regardless): {e}")
+
+    # Text is the priority and is guaranteed to send here regardless of
+    # whatever happened with the graphic above.
     message = build_message(warn_key, office_key, text)
     print(f"[{pil}] Message:\n{message[:400]}...")
 
@@ -294,15 +304,6 @@ def process_warning(warn_key, office_key, state):
     print(f"[{pil}] Sent successfully.")
     state[key] = {"last_etn": etn, "last_text": text}
     save_state(state)
-
-    # Graphic is best-effort only, sent after the text, and never allowed
-    # to block or delay the text above under any circumstance.
-    if telegram_configured():
-        try:
-            send_telegram_photo(build_warning_graphic_url(), caption=f"{OFFICES[office_key]} {WARNING_TYPES[warn_key]['label']}")
-            print(f"[{pil}] Graphic sent.")
-        except Exception as e:
-            print(f"[{pil}] Graphic send failed (non-fatal, text already sent): {e}")
 
 
 def main():
