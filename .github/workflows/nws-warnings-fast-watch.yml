@@ -30,6 +30,7 @@ jobs:
         env:
           NWS_TELEGRAM_BOT_TOKEN: ${{ secrets.NWS_TELEGRAM_BOT_TOKEN }}
           NWS_TELEGRAM_CHAT_ID: ${{ secrets.NWS_TELEGRAM_CHAT_ID }}
+          GEOAPIFY_API_KEY: ${{ secrets.GEOAPIFY_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python nws_warnings_fast_loop.py
 
