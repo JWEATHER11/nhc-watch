@@ -107,12 +107,30 @@ def main():
 
     bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
+
+    # Send the example graphic first (radar + storm-based warning
+    # polygon overlay, confirmed working IEM radmap.php tool), then the
+    # text right after.
+    import time as _time
+    cache_buster = int(_time.time())
+    graphic_url = (
+        f"https://mesonet.agron.iastate.edu/GIS/radmap.php?"
+        f"width=800&height=600&bbox=-95.5,29.0,-92.5,31.0"
+        f"&layers[]=uscounties&layers[]=nexrad&layers[]=sbw"
+        f"&_cb={cache_buster}"
+    )
+    photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": "Example graphic: live radar + storm-based warning polygon overlay for your region"}).encode("utf-8")
+    photo_req = urllib.request.Request(photo_url, data=photo_payload, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(photo_req, timeout=20) as resp:
+        print("Photo result:", json.loads(resp.read().decode("utf-8")))
+
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=20) as resp:
         result = json.loads(resp.read().decode("utf-8"))
-        print(result)
+        print("Text result:", result)
 
 
 if __name__ == "__main__":
