@@ -180,15 +180,27 @@ def main():
     bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
 
-    cache_buster = int(_time.time())
+    def parse_polygon_coords(t):
+        m = re.search(r"LAT\.\.\.LON((?:\s+\d{3,5}){4,})", t)
+        if not m:
+            return None
+        nums = [int(n) for n in m.group(1).split()]
+        coords = []
+        for i in range(0, len(nums), 2):
+            coords.append((-(nums[i + 1] / 100.0), nums[i] / 100.0))
+        if coords[0] != coords[-1]:
+            coords.append(coords[0])
+        return coords
+
+    coords = parse_polygon_coords(SAMPLE_RAW)
+    geoapify_key = os.environ["GEOAPIFY_API_KEY"]
+    geometry = "polygon:" + ",".join(f"{lon},{lat}" for lon, lat in coords)
     graphic_url = (
-        f"https://mesonet.agron.iastate.edu/GIS/radmap.php?"
-        f"width=800&height=600&bbox=-95.5,29.0,-92.5,31.0"
-        f"&layers[]=uscounties&layers[]=nexrad&layers[]=sbw"
-        f"&_cb={cache_buster}"
+        f"https://maps.geoapify.com/v1/staticmap?style=osm-carto"
+        f"&width=800&height=600&geometry={geometry}&apiKey={geoapify_key}"
     )
     photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-    photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": "Example graphic"}).encode("utf-8")
+    photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": "Example: real warning polygon on the new map"}).encode("utf-8")
     photo_req = urllib.request.Request(photo_url, data=photo_payload, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(photo_req, timeout=20) as resp:
         print("Photo result:", json.loads(resp.read().decode("utf-8")))
