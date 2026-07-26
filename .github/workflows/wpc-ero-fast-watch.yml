@@ -1,0 +1,43 @@
+name: WPC ERO Fast Watch (Continuous)
+
+on:
+  schedule:
+    - cron: "50 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: wpc-ero-fast-watch
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run continuous WPC ERO polling loop
+        env:
+          NWS_TELEGRAM_BOT_TOKEN: ${{ secrets.NWS_TELEGRAM_BOT_TOKEN }}
+          NWS_TELEGRAM_CHAT_ID: ${{ secrets.NWS_TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python wpc_ero_fast_loop.py
+
+      - name: Final state commit (safety net)
+        if: always()
+        run: |
+          git config user.name "wpc-ero-fast-watch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add wpc_ero_state.json
+          git diff --quiet --cached || git commit -m "Update WPC ERO state [skip ci]"
+          git push || true
