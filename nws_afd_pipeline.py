@@ -2,7 +2,7 @@
 """
 nws_afd_pipeline.py -- Tracks the local NWS Area Forecast Discussion (AFD)
 for Houston/Galveston (KHGX) and Lake Charles (KLCH), sending the full
-text to the SPC Telegram chat every time either office issues a genuinely
+text to the NWS Telegram chat every time either office issues a genuinely
 new one. Same reliable pattern as everything else: cache-busted fetch,
 full-text dedup, Telegram only, zero AI (this is the forecaster's own
 words, US government work, public domain).
@@ -125,16 +125,35 @@ def reflow_text(text):
 
 
 def clean_body(text):
-    """Strips the WMO/AFOS routing header lines, keeps everything from
-    the product title onward, collapses the page-break control character
-    IEM includes at the end, removes the Aviation/Marine/Fire Weather
-    sections entirely per instruction, and reflows the hard-wrapped text
-    into natural paragraphs for readability."""
+    """Keeps ONLY the Key Messages and Discussion sections -- strips the
+    WMO/AFOS routing header, the '...New X, Y, Z...' indicator line,
+    Aviation/Marine/Fire Weather, Watches/Warnings/Advisories, the
+    trailing '&&' / '$$' markers, and the admin footer line, then
+    reflows the hard-wrapped text into natural paragraphs."""
     text = text.split("\x01")[-1] if "\x01" in text else text
     text = text.replace("\x03", "").strip()
-    text = strip_unwanted_sections(text)
+
+    # Strip the raw routing header (e.g. "924\nFXUS64 KLCH 261725\nAFDLCH")
+    # -- start from the actual title line onward instead.
+    m = re.search(r"Area Forecast Discussion", text)
+    if m:
+        text = text[m.start():]
+
+    # Strip the "...New DISCUSSION, AVIATION, MARINE, FIRE WEATHER..." line.
+    text = re.sub(r"^\s*\.\.\.New[^\n]*\.\.\.\s*\n", "", text, flags=re.M)
+
+    # Keep only Key Messages + Discussion. Text splits on "&&" into:
+    # [0]=Key Messages, [1]=Discussion, [2+]=Watches/Warnings/$$/footer.
+    # Keep segments 0 and 1, drop everything else, and drop the "&&"
+    # characters themselves entirely (never wanted in the output).
+    segments = text.split("&&")
+    if len(segments) >= 2:
+        text = segments[0].strip() + "\n\n" + segments[1].strip()
+    else:
+        text = segments[0].strip()
+
     text = reflow_text(text)
-    text = re.sub(r"\n{3,}", "\n\n", text)  # collapse extra blank lines left behind
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
@@ -147,12 +166,12 @@ def save_state(state):
 
 
 def telegram_configured():
-    return bool(os.environ.get("SPC_TELEGRAM_BOT_TOKEN")) and bool(os.environ.get("SPC_TELEGRAM_CHAT_ID"))
+    return bool(os.environ.get("NWS_TELEGRAM_BOT_TOKEN")) and bool(os.environ.get("NWS_TELEGRAM_CHAT_ID"))
 
 
 def send_telegram(text):
-    bot_token = os.environ["SPC_TELEGRAM_BOT_TOKEN"]
-    chat_id = os.environ["SPC_TELEGRAM_CHAT_ID"]
+    bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
+    chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     # Telegram caps a single message at 4096 chars -- AFDs can run long.
     max_len = 4000
@@ -183,9 +202,9 @@ def deliver(text, subject="NWS AFD Update"):
     correctly don't mark the item as sent."""
     if not telegram_configured():
         print("Telegram not configured -- skipping (no SMS fallback).")
-        raise RuntimeError("Telegram not configured for SPC chat")
+        raise RuntimeError("Telegram not configured for NWS chat")
     send_telegram(text)
-    print("Delivered via Telegram (SPC chat).")
+    print("Delivered via Telegram (NWS chat).")
 
 
 def send_failure_alert(context, error):
