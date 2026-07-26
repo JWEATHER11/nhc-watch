@@ -278,15 +278,10 @@ def process_warning(warn_key, office_key, state):
         print(f"[{pil}] No change -- not sending.")
         return
 
-    print(f"[{pil}] New warning detected (ETN={etn}) -- sending.")
+    print(f"[{pil}] New warning detected (ETN={etn}) -- sending TEXT first, always, no matter what.")
 
-    if telegram_configured():
-        try:
-            send_telegram_photo(build_warning_graphic_url(), caption=f"{OFFICES[office_key]} {WARNING_TYPES[warn_key]['label']}")
-            print(f"[{pil}] Graphic sent.")
-        except Exception as e:
-            print(f"[{pil}] Graphic send failed (non-fatal): {e}")
-
+    # Text is the priority and must never be delayed or blocked by the
+    # graphic -- send it immediately, first thing, every time.
     message = build_message(warn_key, office_key, text)
     print(f"[{pil}] Message:\n{message[:400]}...")
 
@@ -299,6 +294,15 @@ def process_warning(warn_key, office_key, state):
     print(f"[{pil}] Sent successfully.")
     state[key] = {"last_etn": etn, "last_text": text}
     save_state(state)
+
+    # Graphic is best-effort only, sent after the text, and never allowed
+    # to block or delay the text above under any circumstance.
+    if telegram_configured():
+        try:
+            send_telegram_photo(build_warning_graphic_url(), caption=f"{OFFICES[office_key]} {WARNING_TYPES[warn_key]['label']}")
+            print(f"[{pil}] Graphic sent.")
+        except Exception as e:
+            print(f"[{pil}] Graphic send failed (non-fatal, text already sent): {e}")
 
 
 def main():
