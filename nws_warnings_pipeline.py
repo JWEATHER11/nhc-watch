@@ -161,14 +161,62 @@ def extract_tag_line(text):
     return None
 
 
+def strip_boilerplate_lines(text):
+    text = re.sub(r"^BULLETIN\s*-\s*EAS ACTIVATION REQUESTED\s*\n?", "", text, flags=re.M)
+    text = re.sub(r"^The National Weather Service in .+ has issued a\s*\n?", "", text, flags=re.M)
+    return text
+
+
+def strip_precautionary_section(text):
+    """Removes the PRECAUTIONARY/PREPAREDNESS ACTIONS section entirely,
+    per instruction."""
+    return re.sub(
+        r"\n\s*PRECAUTIONARY/PREPAREDNESS ACTIONS\.\.\.[\s\S]*?(?=\n\s*\n|\Z)",
+        "",
+        text,
+    )
+
+
+def convert_times(text):
+    """'1030 AM CDT' -> '10:30 AM' -- drops the timezone abbreviation
+    and adds a colon, per instruction."""
+    def repl(m):
+        digits, ampm = m.group(1), m.group(2)
+        if len(digits) == 3:
+            digits = "0" + digits
+        return f"{int(digits[:2])}:{digits[2:]} {ampm}"
+    return re.sub(
+        r"\b(\d{3,4})\s?(AM|PM)\s+(?:CDT|CST|EDT|EST|MDT|MST|PDT|PST)\b",
+        repl,
+        text,
+    )
+
+
+def strip_bullet_markers(text):
+    return re.sub(r"^\*\s*", "", text, flags=re.M)
+
+
+def relocate_warning_for_block(text):
+    """Moves the '[Type] Warning for... [county list]' block from its
+    normal position near the top to the very end of the message, per
+    instruction. Non-greedy match stops at the first blank line so it
+    never eats into the next paragraph."""
+    m = re.search(r"[A-Za-z ]+ Warning for\.\.\.\n[\s\S]*?(?=\n\s*\n)", text)
+    if not m:
+        return text
+    block = text[m.start():m.end()].strip()
+    remainder = (text[:m.start()] + text[m.end():]).strip()
+    return remainder + "\n\n" + block
+
+
 def clean_body(text):
     """Strips the WMO/AFOS routing header and VTEC line(s) from the top,
     strips everything from the first '&&' onward (LAT/LON polygon block,
     '$$', forecaster name), pulls out the summary tag line to use
-    separately at the top, and reflows hard-wrapped text into natural
-    paragraphs."""
-    # Drop everything through the VTEC line(s) -- the readable bulletin
-    # text (e.g. "BULLETIN - EAS ACTIVATION REQUESTED") starts right after.
+    separately at the top, strips boilerplate intro lines and the
+    Precautionary/Preparedness section, converts times to a cleaner
+    format, strips '*' bullet markers, moves the county-list block to
+    the end, and reflows hard-wrapped text into natural paragraphs."""
     m = re.search(r"/[OX]\.\w+\.\w{4}\.\w{2}\.\w\.\d{4}\.[^\n]*\n(?:/[^\n]*\n)*", text)
     if m:
         text = text[m.end():]
@@ -178,8 +226,13 @@ def clean_body(text):
 
     tag_line = extract_tag_line(text)
 
-    # Drop everything from the first "&&" onward.
     text = text.split("&&")[0].strip()
+
+    text = strip_boilerplate_lines(text)
+    text = strip_precautionary_section(text)
+    text = relocate_warning_for_block(text)
+    text = convert_times(text)
+    text = strip_bullet_markers(text)
 
     text = reflow_text(text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
