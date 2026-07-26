@@ -123,12 +123,30 @@ def relocate_warning_for_block(text):
     return remainder + "\n\n" + block
 
 
+def strip_wmo_afos_header(text):
+    idx = text.find("BULLETIN")
+    if idx >= 0:
+        return text[idx:]
+    return text
+
+
+def extract_until_time(text):
+    m = re.search(r"\*?\s*Until\s+([\d:]+\s*(?:AM|PM)(?:\s+[A-Z]{3,4})?)\.?\s*\n?", text)
+    if not m:
+        return text, None
+    until_raw = m.group(1).strip()
+    new_text = text[:m.start()] + text[m.end():]
+    return new_text, until_raw
+
+
 def clean_body(text):
-    m = re.search(r"/[OX]\.\w+\.\w{4}\.\w{2}\.\w\.\d{4}\.[^\n]*\n(?:/[^\n]*\n)*", text)
-    if m:
-        text = text[m.end():]
-    elif "\x01" in text:
-        text = text.split("\x01")[-1]
+    text = strip_wmo_afos_header(text)
+    if not text.startswith("BULLETIN"):
+        m = re.search(r"/[OX]\.\w+\.\w{4}\.\w{2}\.\w\.\d{4}\.[^\n]*\n(?:/[^\n]*\n)*", text)
+        if m:
+            text = text[m.end():]
+        elif "\x01" in text:
+            text = text.split("\x01")[-1]
     text = text.replace("\x03", "").strip()
 
     tag_line = extract_tag_line(text)
@@ -136,20 +154,25 @@ def clean_body(text):
     text = strip_boilerplate_lines(text)
     text = strip_precautionary_section(text)
     text = relocate_warning_for_block(text)
+    text, until_raw = extract_until_time(text)
     text = convert_times(text)
+    until_time = convert_times(until_raw) if until_raw else None
     text = strip_bullet_markers(text)
     text = reflow_text(text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return text, tag_line
+    return text, tag_line, until_time
 
 
 def main():
-    body, tag_line = clean_body(SAMPLE_RAW)
+    body, tag_line, until_time = clean_body(SAMPLE_RAW)
     parts = []
     if tag_line:
         parts.append(tag_line)
         parts.append("")
-    parts.append("Issued: 10:30 AM Sun Jul 26 2026")
+    if until_time:
+        parts.append(f"Issued: 10:30 AM Sun Jul 26 2026 -- Until: {until_time}")
+    else:
+        parts.append("Issued: 10:30 AM Sun Jul 26 2026")
     parts.append("")
     parts.append(body)
     message = "\n".join(parts)
