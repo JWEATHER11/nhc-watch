@@ -76,13 +76,31 @@ def issued_time_from_header(text):
     return m.group(0).strip() if m else None
 
 
+# Sections we never want -- stripped out entirely before sending, per
+# instruction. Matches the AFD's own ".SECTIONNAME..." ... "&&" format.
+UNWANTED_SECTIONS = ["AVIATION", "MARINE", "FIRE WEATHER"]
+
+
+def strip_unwanted_sections(text):
+    for section in UNWANTED_SECTIONS:
+        pattern = re.compile(
+            rf"\n\s*\.{re.escape(section)}\.\.\..*?\n\s*&&\s*\n",
+            re.S,
+        )
+        text = pattern.sub("\n", text)
+    return text
+
+
 def clean_body(text):
     """Strips the WMO/AFOS routing header lines, keeps everything from
-    the product title onward, and collapses the page-break control
-    character IEM includes at the end."""
+    the product title onward, collapses the page-break control character
+    IEM includes at the end, and removes the Aviation/Marine/Fire Weather
+    sections entirely per instruction."""
     text = text.split("\x01")[-1] if "\x01" in text else text
     text = text.replace("\x03", "").strip()
-    return text
+    text = strip_unwanted_sections(text)
+    text = re.sub(r"\n{3,}", "\n\n", text)  # collapse extra blank lines left behind
+    return text.strip()
 
 
 def load_state():
