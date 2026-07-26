@@ -26,9 +26,9 @@ from pathlib import Path
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
 
 WARNING_TYPES = {
-    "tor": {"pil_prefix": "TOR", "label": "Tornado Warning"},
-    "svr": {"pil_prefix": "SVR", "label": "Severe Thunderstorm Warning"},
-    "ffw": {"pil_prefix": "FFW", "label": "Flash Flood Warning"},
+    "tor": {"pil_prefix": "TOR", "label": "Tornado Warning", "color": "#e60000"},
+    "svr": {"pil_prefix": "SVR", "label": "Severe Thunderstorm Warning", "color": "#ffd400"},
+    "ffw": {"pil_prefix": "FFW", "label": "Flash Flood Warning", "color": "#00a651"},
 }
 
 OFFICES = {
@@ -111,14 +111,19 @@ def parse_polygon_coords(text):
     return coords
 
 
-def build_warning_graphic_url(raw_text):
+def build_warning_graphic_url(raw_text, warn_key):
     """Real warning polygon (from the product's own LAT...LON line) on a
-    clean, modern Geoapify map -- confirmed working via direct test."""
+    clean, modern Geoapify map. Filled with a light, semi-transparent
+    version of the warning-type color (red=Tornado, yellow=Severe
+    Thunderstorm, green=Flash Flood) so the map underneath stays
+    readable, matching the reference NWS social graphic style."""
     coords = parse_polygon_coords(raw_text)
     api_key = os.environ.get("GEOAPIFY_API_KEY")
     if not coords or not api_key:
         return None
-    geometry = "polygon:" + ",".join(f"{lon},{lat}" for lon, lat in coords)
+    color = WARNING_TYPES[warn_key]["color"]
+    coord_str = ",".join(f"{lon},{lat}" for lon, lat in coords)
+    geometry = f"polygon:{coord_str};fillcolor:{color};fillopacity:0.35;linecolor:{color};linewidth:3"
     return (
         f"https://maps.geoapify.com/v1/staticmap?style=osm-carto"
         f"&width=800&height=600&geometry={geometry}&apiKey={api_key}"
@@ -397,9 +402,10 @@ def process_warning(warn_key, office_key, state):
     # can ever block, delay, or prevent the text.
     if telegram_configured():
         try:
-            photo_url = build_warning_graphic_url(text)
+            photo_url = build_warning_graphic_url(text, warn_key)
             if photo_url:
-                send_telegram_photo(photo_url, caption=f"{OFFICES[office_key]} {WARNING_TYPES[warn_key]['label']}")
+                title = f"\u26a0\ufe0f {WARNING_TYPES[warn_key]['label'].upper()} \u26a0\ufe0f\nNWS {OFFICES[office_key]}"
+                send_telegram_photo(photo_url, caption=title)
                 print(f"[{pil}] Graphic sent.")
             else:
                 print(f"[{pil}] No polygon found or Geoapify key missing -- skipping graphic (non-fatal).")
