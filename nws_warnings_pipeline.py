@@ -90,13 +90,38 @@ def vtec_event_number(text):
 REGION_BBOX = "-95.5,29.0,-92.5,31.0"
 
 
-def build_warning_graphic_url():
-    cache_buster = int(time.time())
+def parse_polygon_coords(text):
+    """Extracts the exact warning polygon from the raw product's own
+    'LAT...LON' line -- the same coordinates NWS/SPC themselves draw --
+    and converts NWS's 4-digit lat/lon notation (e.g. '2995 9403' =
+    29.95N, 94.03W) into proper decimal degree pairs for a map overlay."""
+    m = re.search(r"LAT\.\.\.LON((?:\s+\d{3,5}){4,})", text)
+    if not m:
+        return None
+    nums = [int(n) for n in m.group(1).split()]
+    if len(nums) < 6 or len(nums) % 2 != 0:
+        return None
+    coords = []
+    for i in range(0, len(nums), 2):
+        lat = nums[i] / 100.0
+        lon = -(nums[i + 1] / 100.0)
+        coords.append((lon, lat))
+    if coords[0] != coords[-1]:
+        coords.append(coords[0])
+    return coords
+
+
+def build_warning_graphic_url(raw_text):
+    """Real warning polygon (from the product's own LAT...LON line) on a
+    clean, modern Geoapify map -- confirmed working via direct test."""
+    coords = parse_polygon_coords(raw_text)
+    api_key = os.environ.get("GEOAPIFY_API_KEY")
+    if not coords or not api_key:
+        return None
+    geometry = "polygon:" + ",".join(f"{lon},{lat}" for lon, lat in coords)
     return (
-        f"https://mesonet.agron.iastate.edu/GIS/radmap.php?"
-        f"width=800&height=600&bbox={REGION_BBOX}"
-        f"&layers[]=uscounties&layers[]=nexrad&layers[]=sbw"
-        f"&_cb={cache_buster}"
+        f"https://maps.geoapify.com/v1/staticmap?style=osm-carto"
+        f"&width=800&height=600&geometry={geometry}&apiKey={api_key}"
     )
 
 
@@ -372,8 +397,12 @@ def process_warning(warn_key, office_key, state):
     # can ever block, delay, or prevent the text.
     if telegram_configured():
         try:
-            send_telegram_photo(build_warning_graphic_url(), caption=f"{OFFICES[office_key]} {WARNING_TYPES[warn_key]['label']}")
-            print(f"[{pil}] Graphic sent.")
+            photo_url = build_warning_graphic_url(text)
+            if photo_url:
+                send_telegram_photo(photo_url, caption=f"{OFFICES[office_key]} {WARNING_TYPES[warn_key]['label']}")
+                print(f"[{pil}] Graphic sent.")
+            else:
+                print(f"[{pil}] No polygon found or Geoapify key missing -- skipping graphic (non-fatal).")
         except Exception as e:
             print(f"[{pil}] Graphic failed (non-fatal, text sends regardless): {e}")
 
