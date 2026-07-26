@@ -121,7 +121,7 @@ def build_warning_graphic_url(raw_text, warn_key):
     api_key = os.environ.get("GEOAPIFY_API_KEY")
     if not coords or not api_key:
         return None
-    color = WARNING_TYPES[warn_key]["color"]
+    color = WARNING_TYPES[warn_key]["color"].replace("#", "%23")
     coord_str = ",".join(f"{lon},{lat}" for lon, lat in coords)
     geometry = f"polygon:{coord_str};fillcolor:{color};fillopacity:0.35;linecolor:{color};linewidth:3"
     return (
