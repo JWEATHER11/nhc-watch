@@ -122,10 +122,70 @@ def send_telegram_photo(photo_url, caption=""):
     print(f"Graphic send failed after {MAX_ATTEMPTS} attempts (non-fatal, text still sends): {last_err}")
 
 
+def reflow_text(text):
+    """NWS text products are hard-wrapped at a fixed width -- rejoins
+    wrapped lines back into natural, readable paragraphs, preserving
+    real structure: bullet lines (*), section markers, and blank-line
+    paragraph breaks."""
+    lines = text.split("\n")
+    output_lines = []
+    buffer = []
+
+    def flush_buffer():
+        if buffer:
+            output_lines.append(" ".join(buffer))
+            buffer.clear()
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            flush_buffer()
+            output_lines.append("")
+        elif stripped.startswith("*"):
+            flush_buffer()
+            buffer.append(stripped)
+        else:
+            buffer.append(stripped)
+    flush_buffer()
+    return "\n".join(output_lines)
+
+
+def extract_tag_line(text):
+    """Finds the warning's summary tag, e.g. 'FLASH FLOOD...RADAR
+    INDICATED', 'TORNADO...RADAR INDICATED', or 'THUNDERSTORM DAMAGE
+    THREAT...CONSIDERABLE' -- normally buried near the bottom of the raw
+    product, but per instruction this goes at the very top instead.
+    Explicitly excludes digits (and the LAT...LON line) so it never
+    mistakes the polygon coordinate line for the actual tag."""
+    for m in re.finditer(r"^([A-Z][A-Z ]+\.\.\.[A-Z][A-Z ]+)\s*$", text, re.M):
+        if not m.group(1).startswith("LAT"):
+            return m.group(1).strip()
+    return None
+
+
 def clean_body(text):
-    text = text.split("\x01")[-1] if "\x01" in text else text
+    """Strips the WMO/AFOS routing header and VTEC line(s) from the top,
+    strips everything from the first '&&' onward (LAT/LON polygon block,
+    '$$', forecaster name), pulls out the summary tag line to use
+    separately at the top, and reflows hard-wrapped text into natural
+    paragraphs."""
+    # Drop everything through the VTEC line(s) -- the readable bulletin
+    # text (e.g. "BULLETIN - EAS ACTIVATION REQUESTED") starts right after.
+    m = re.search(r"/[OX]\.\w+\.\w{4}\.\w{2}\.\w\.\d{4}\.[^\n]*\n(?:/[^\n]*\n)*", text)
+    if m:
+        text = text[m.end():]
+    elif "\x01" in text:
+        text = text.split("\x01")[-1]
     text = text.replace("\x03", "").strip()
-    return text
+
+    tag_line = extract_tag_line(text)
+
+    # Drop everything from the first "&&" onward.
+    text = text.split("&&")[0].strip()
+
+    text = reflow_text(text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text, tag_line
 
 
 def load_state():
@@ -185,8 +245,11 @@ def build_message(warn_key, office_key, text):
     label = WARNING_TYPES[warn_key]["label"]
     office_name = OFFICES[office_key]
     issued = issued_time_from_header(text)
-    body = clean_body(text)
+    body, tag_line = clean_body(text)
     parts = []
+    if tag_line:
+        parts.append(tag_line)
+        parts.append("")
     if issued:
         parts.append(f"Issued: {issued}")
         parts.append("")
