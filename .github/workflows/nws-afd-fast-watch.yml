@@ -28,8 +28,8 @@ jobs:
 
       - name: Run continuous NWS AFD polling loop
         env:
-          SPC_TELEGRAM_BOT_TOKEN: ${{ secrets.SPC_TELEGRAM_BOT_TOKEN }}
-          SPC_TELEGRAM_CHAT_ID: ${{ secrets.SPC_TELEGRAM_CHAT_ID }}
+          NWS_TELEGRAM_BOT_TOKEN: ${{ secrets.NWS_TELEGRAM_BOT_TOKEN }}
+          NWS_TELEGRAM_CHAT_ID: ${{ secrets.NWS_TELEGRAM_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python nws_afd_fast_loop.py
 
