@@ -29,6 +29,9 @@ jobs:
       - name: Install tzdata (safety net for timezone conversion)
         run: pip install tzdata --break-system-packages
 
+      - name: Install xarray/netCDF4/numpy (for GFS deterministic scan)
+        run: pip install xarray netCDF4 numpy --break-system-packages
+
       - name: Run continuous WX model polling loop
         env:
           WXMODEL_TELEGRAM_BOT_TOKEN: ${{ secrets.WXMODEL_TELEGRAM_BOT_TOKEN }}
