@@ -254,15 +254,53 @@ ISSUANCE_SCHEDULE_UTC = {
 CENTRAL_UTC_OFFSET = 5  # CDT (UTC-5). Change to 6 for CST (winter).
 
 
-def next_issuance_central(day_key):
-    now_utc = datetime.now(timezone.utc)
-    today = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+def parse_issued_to_utc(issued_str):
+    """Parses the header's issued-time string (e.g. '1252 AM CDT Sun Jul
+    27 2026' or '731 AM CDT Tue Jul 25 2026') into a real UTC datetime,
+    so we can calculate 'next' from the outlook's own actual issued time
+    instead of the script's runtime -- SPC sometimes issues a few
+    minutes early/late relative to its nominal schedule, and basing this
+    on 'now' caused the next-issuance calculation to sometimes pick the
+    SAME slot that was just issued. Uses explicit regex extraction
+    rather than strptime's ambiguous handling of 3- vs 4-digit HHMM."""
+    if not issued_str:
+        return None
+    m = re.match(
+        r"(\d{3,4})\s+(AM|PM)\s+(?:CDT|CST)\s+\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{4})",
+        issued_str.strip(),
+    )
+    if not m:
+        return None
+    digits, ampm, month_str, day_str, year_str = m.groups()
+    digits = digits.zfill(4)
+    hour, minute = int(digits[:2]), int(digits[2:])
+    if ampm == "PM" and hour != 12:
+        hour += 12
+    if ampm == "AM" and hour == 12:
+        hour = 0
+    try:
+        dt_naive = datetime.strptime(f"{month_str} {day_str} {year_str}", "%b %d %Y")
+        dt_naive = dt_naive.replace(hour=hour, minute=minute)
+        return dt_naive + timedelta(hours=CENTRAL_UTC_OFFSET)
+    except ValueError:
+        return None
+
+
+def next_issuance_central(day_key, issued_str=None):
+    reference_utc = parse_issued_to_utc(issued_str) if issued_str else None
+    if reference_utc is None:
+        reference_utc = datetime.now(timezone.utc)
+    # Small buffer so an outlook issued a few minutes early never gets
+    # mistaken for already being its own "next" scheduled slot.
+    reference_utc = reference_utc + timedelta(minutes=20)
+
+    today = reference_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     candidates = []
     for day_offset in (0, 1):
         base = today + timedelta(days=day_offset)
         for hour, minute in ISSUANCE_SCHEDULE_UTC[day_key]:
             candidates.append(base + timedelta(hours=hour, minutes=minute))
-    upcoming = min(c for c in candidates if c > now_utc)
+    upcoming = min(c for c in candidates if c > reference_utc)
     central = upcoming - timedelta(hours=CENTRAL_UTC_OFFSET)
     return central.strftime("%-I:%M %p").lstrip("0") + " CDT " + central.strftime("%a")
 
@@ -288,7 +326,7 @@ def build_message(day_key, text):
         parts.append("")
 
     try:
-        next_time = next_issuance_central(day_key)
+        next_time = next_issuance_central(day_key, issued_str=issued)
         parts.append(f"Next {cfg['label']}: {next_time}")
         parts.append("")
     except Exception as e:
