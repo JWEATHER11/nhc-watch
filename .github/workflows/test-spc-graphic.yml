@@ -1,0 +1,22 @@
+name: Test SPC Graphic (one-off)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run SPC graphic test
+        env:
+          SPC_TELEGRAM_BOT_TOKEN: ${{ secrets.SPC_TELEGRAM_BOT_TOKEN }}
+          SPC_TELEGRAM_CHAT_ID: ${{ secrets.SPC_TELEGRAM_CHAT_ID }}
+        run: python test_spc_graphic.py
