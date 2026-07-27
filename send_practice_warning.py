@@ -201,11 +201,29 @@ def main():
         f"https://maps.geoapify.com/v1/staticmap?style=osm-carto"
         f"&width=800&height=600&geometry={geometry}&apiKey={geoapify_key}"
     )
-    photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
     title = "\u26a0\ufe0f SEVERE THUNDERSTORM WARNING \u26a0\ufe0f\nNWS Houston/Galveston [PRACTICE ONLY]"
-    photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": title}).encode("utf-8")
-    print("Photo URL being sent to Telegram:", graphic_url)
-    photo_req = urllib.request.Request(photo_url, data=photo_payload, headers={"Content-Type": "application/json"}, method="POST")
+    print("Fetching image bytes ourselves from Geoapify (more reliable than asking Telegram to fetch the URL itself)...")
+    image_req = urllib.request.Request(graphic_url, headers={"User-Agent": "nws-warnings-pipeline/1.0"})
+    with urllib.request.urlopen(image_req, timeout=20) as img_resp:
+        image_bytes = img_resp.read()
+    print(f"Got {len(image_bytes)} bytes of image data.")
+
+    boundary = "----geoapifyUploadBoundary"
+    body_parts = []
+    body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode("utf-8"))
+    body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{title}\r\n".encode("utf-8"))
+    body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"warning.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".encode("utf-8"))
+    body_parts.append(image_bytes)
+    body_parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+    multipart_body = b"".join(body_parts)
+
+    photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    photo_req = urllib.request.Request(
+        photo_url,
+        data=multipart_body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
     try:
         with urllib.request.urlopen(photo_req, timeout=20) as resp:
             print("Photo result:", json.loads(resp.read().decode("utf-8")))
