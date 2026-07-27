@@ -7,6 +7,7 @@ continuous system -- run once, then delete."""
 import json
 import os
 import re
+import urllib.error
 import urllib.request
 import time as _time
 
@@ -203,9 +204,14 @@ def main():
     photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
     title = "\u26a0\ufe0f SEVERE THUNDERSTORM WARNING \u26a0\ufe0f\nNWS Houston/Galveston [PRACTICE ONLY]"
     photo_payload = json.dumps({"chat_id": chat_id, "photo": graphic_url, "caption": title}).encode("utf-8")
+    print("Photo URL being sent to Telegram:", graphic_url)
     photo_req = urllib.request.Request(photo_url, data=photo_payload, headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(photo_req, timeout=20) as resp:
-        print("Photo result:", json.loads(resp.read().decode("utf-8")))
+    try:
+        with urllib.request.urlopen(photo_req, timeout=20) as resp:
+            print("Photo result:", json.loads(resp.read().decode("utf-8")))
+    except urllib.error.HTTPError as e:
+        print("Photo send FAILED, Telegram's actual response:", e.read().decode("utf-8"))
+        raise
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
