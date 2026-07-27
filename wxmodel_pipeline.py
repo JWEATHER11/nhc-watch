@@ -295,6 +295,122 @@ def process_quiet_basin(state):
     save_state(state)
 
 
+def find_recent_gfs_cycle():
+    """GFS runs 00/06/12/18Z with roughly 4-5h publication delay -- tries
+    the most recent plausible cycles, newest first."""
+    import xarray as xr
+
+    now_utc = datetime.now(timezone.utc)
+    for day_offset in (0, 1):
+        base_date = now_utc - __import__("datetime").timedelta(days=day_offset)
+        for hour in (18, 12, 6, 0):
+            date_str = base_date.strftime("%Y%m%d")
+            url = f"https://nomads.ncep.noaa.gov/dods/gfs_0p25_1hr/gfs{date_str}/gfs_0p25_1hr_{hour:02d}z"
+            try:
+                ds = xr.open_dataset(url)
+                return ds, date_str, hour
+            except Exception as e:
+                print(f"[GFS deterministic] Cycle {date_str} {hour:02d}Z not available yet ({e}), trying older...")
+                continue
+    return None, None, None
+
+
+def scan_gfs_deterministic():
+    """Scans the latest deterministic GFS run for developing lows in the
+    Tropical Atlantic, Caribbean, and Gulf of Mexico, even before NHC
+    designates anything as an invest. Uses NOMADS OPeNDAP (xarray +
+    netCDF4) instead of raw GRIB decoding -- much more reliable in a CI
+    environment. Reports the lowest pressure found, its location, and
+    the associated wind speed, at several forecast hours."""
+    import numpy as np
+
+    ds, cycle_date, cycle_hour = find_recent_gfs_cycle()
+    if ds is None:
+        print("[GFS deterministic] Could not open any recent GFS cycle -- skipping this scan (non-fatal).")
+        return None
+
+    try:
+        mslp = ds["prmslmsl"].sel(lat=slice(5, 35), lon=slice(260, 340))
+        u10 = ds["ugrd10m"].sel(lat=slice(5, 35), lon=slice(260, 340))
+        v10 = ds["vgrd10m"].sel(lat=slice(5, 35), lon=slice(260, 340))
+    except KeyError as e:
+        print(f"[GFS deterministic] Expected variable not found ({e}) -- skipping (non-fatal).")
+        ds.close()
+        return None
+
+    results = []
+    for fh in (0, 24, 48, 72, 96, 120):
+        try:
+            mslp_fh = mslp.isel(time=fh).values
+        except (IndexError, KeyError):
+            continue
+        flat_idx = int(np.nanargmin(mslp_fh))
+        row, col = np.unravel_index(flat_idx, mslp_fh.shape)
+        min_pa = float(mslp_fh[row, col])
+        min_lat = float(mslp.lat.values[row])
+        min_lon_raw = float(mslp.lon.values[col])
+        display_lon = min_lon_raw - 360 if min_lon_raw > 180 else min_lon_raw
+
+        try:
+            u_val = float(u10.isel(time=fh).values[row, col])
+            v_val = float(v10.isel(time=fh).values[row, col])
+            wind_mph = round(((u_val ** 2 + v_val ** 2) ** 0.5) * 2.23694)
+        except Exception:
+            wind_mph = None
+
+        results.append({
+            "fh": fh,
+            "mslp_mb": round(min_pa / 100, 1),
+            "lat": round(min_lat, 1),
+            "lon": round(display_lon, 1),
+            "wind_mph": wind_mph,
+        })
+
+    ds.close()
+    if not results:
+        return None
+    return {"cycle_date": cycle_date, "cycle_hour": cycle_hour, "results": results}
+
+
+def build_gfs_deterministic_report(scan):
+    cycle_dt = datetime.strptime(f"{scan['cycle_date']}{scan['cycle_hour']:02d}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+    cycle_local = cycle_dt.astimezone(BEAUMONT_TZ)
+    cycle_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
+
+    lines = [f"GFS Deterministic -- Atlantic/Caribbean/Gulf scan ({cycle_str} run)", ""]
+    for r in scan["results"]:
+        wind_str = f", {r['wind_mph']} mph winds nearby" if r["wind_mph"] is not None else ""
+        lines.append(
+            f"Hour {r['fh']}: lowest pressure {r['mslp_mb']} mb near "
+            f"{r['lat']}N {abs(r['lon'])}W{wind_str}"
+        )
+    lines.append("")
+    lines.append("Note: this is a raw scan of the model's pressure field, not an official NHC designation.")
+    return "\n".join(lines)
+
+
+def process_gfs_deterministic(state):
+    scan = scan_gfs_deterministic()
+    if not scan:
+        return
+
+    fingerprint = f"{scan['cycle_date']}{scan['cycle_hour']:02d}"
+    if state.get("gfs_deterministic_cycle") == fingerprint:
+        print("[GFS deterministic] Already reported this cycle -- not resending.")
+        return
+
+    message = build_gfs_deterministic_report(scan)
+    try:
+        deliver(message)
+    except Exception as e:
+        send_failure_alert("GFS deterministic delivery", str(e))
+        return
+
+    print("[GFS deterministic] Sent successfully.")
+    state["gfs_deterministic_cycle"] = fingerprint
+    save_state(state)
+
+
 def main():
     state = load_state()
     storms = fetch_active_atlantic_storms()
@@ -304,13 +420,17 @@ def main():
             process_quiet_basin(state)
         except Exception as e:
             print(f"Unexpected error in quiet-basin handling (non-fatal): {e}")
-        return
+    else:
+        for storm in storms:
+            try:
+                process_storm(storm, state)
+            except Exception as e:
+                print(f"[{storm.get('id')}] Unexpected error (non-fatal, continuing): {e}")
 
-    for storm in storms:
-        try:
-            process_storm(storm, state)
-        except Exception as e:
-            print(f"[{storm.get('id')}] Unexpected error (non-fatal, continuing): {e}")
+    try:
+        process_gfs_deterministic(state)
+    except Exception as e:
+        print(f"[GFS deterministic] Unexpected error (non-fatal): {e}")
 
 
 if __name__ == "__main__":
