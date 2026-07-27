@@ -80,14 +80,36 @@ def build_outlook_graphic_url():
 
 
 def send_telegram_photo(photo_url, caption=""):
+    """Downloads the image ourselves and uploads the bytes directly to
+    Telegram (multipart/form-data), instead of asking Telegram to fetch
+    the URL itself -- more reliable; some URLs get rejected by Telegram
+    with 'wrong type of the web page content' even when genuinely valid
+    images."""
     bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
-    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-    payload = json.dumps({"chat_id": chat_id, "photo": photo_url, "caption": caption[:1024]}).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
     last_err = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
+            image_req = urllib.request.Request(photo_url, headers={"User-Agent": "nhc-outlook-pipeline/1.0"})
+            with urllib.request.urlopen(image_req, timeout=15) as img_resp:
+                image_bytes = img_resp.read()
+
+            boundary = "----outlookPhotoBoundary"
+            parts = [
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode("utf-8"),
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{caption[:1024]}\r\n".encode("utf-8"),
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"graphic.png\"\r\nContent-Type: image/png\r\n\r\n".encode("utf-8"),
+                image_bytes,
+                f"\r\n--{boundary}--\r\n".encode("utf-8"),
+            ]
+            body = b"".join(parts)
+
+            url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+            req = urllib.request.Request(
+                url, data=body,
+                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+                method="POST",
+            )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 if result.get("ok"):
