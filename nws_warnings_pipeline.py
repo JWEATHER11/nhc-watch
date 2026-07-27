@@ -131,16 +131,36 @@ def build_warning_graphic_url(raw_text, warn_key):
 
 
 def send_telegram_photo(photo_url, caption=""):
-    """Single attempt, short timeout, no retries -- the graphic is
-    best-effort only and must NEVER meaningfully delay the text. If it
-    fails or is slow, this gives up fast so the text send right after it
-    is never held up."""
+    """Downloads the image ourselves and uploads the bytes directly to
+    Telegram (multipart/form-data), instead of asking Telegram to fetch
+    the URL itself -- confirmed more reliable; passing the raw URL to
+    Telegram got rejected with 'wrong type of the web page content'
+    even though the URL is a genuinely valid image. Single attempt,
+    short timeout -- the graphic is best-effort only and must NEVER
+    meaningfully delay the text."""
     bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
-    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-    payload = json.dumps({"chat_id": chat_id, "photo": photo_url, "caption": caption[:1024]}).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
     try:
+        image_req = urllib.request.Request(photo_url, headers={"User-Agent": "nws-warnings-pipeline/1.0"})
+        with urllib.request.urlopen(image_req, timeout=8) as img_resp:
+            image_bytes = img_resp.read()
+
+        boundary = "----warningPhotoBoundary"
+        parts = [
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode("utf-8"),
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{caption[:1024]}\r\n".encode("utf-8"),
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"warning.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".encode("utf-8"),
+            image_bytes,
+            f"\r\n--{boundary}--\r\n".encode("utf-8"),
+        ]
+        body = b"".join(parts)
+
+        url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+        req = urllib.request.Request(
+            url, data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
         with urllib.request.urlopen(req, timeout=8) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             if result.get("ok"):
