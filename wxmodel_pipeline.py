@@ -432,6 +432,114 @@ def process_model_scan(model_key, model_endpoint, model_name, state):
     save_state(state)
 
 
+# A handful of representative center-points across the domain, used
+# for ensemble genesis-probability checking (kept small since ensemble
+# responses carry many members and get large fast).
+ENSEMBLE_CHECK_POINTS = [
+    (25.0, -90.0, "Gulf of Mexico"),
+    (15.0, -72.0, "Caribbean Sea"),
+    (15.0, -45.0, "Open Tropical Atlantic"),
+]
+
+ENSEMBLE_MODELS = {
+    "gefs": ("gfs_seamless", "GEFS (GFS Ensemble)"),
+    "ecmwf_ens": ("ecmwf_ifs025_ensemble", "ECMWF Ensemble"),
+    "google_ai": ("google_weathernext2_ensemble", "Google WeatherNext AI Ensemble"),
+}
+
+DISTURBANCE_THRESHOLD_MB = 1008  # rough threshold suggesting a developing low
+GENESIS_CHECK_HOURS = (24, 72, 120)
+
+
+def fetch_ensemble_genesis_signal(model_key):
+    """Checks a handful of representative points across the domain for
+    how many ensemble members show a developing low (pressure below the
+    disturbance threshold) at several forecast hours -- a rough,
+    practical stand-in for full genesis-probability tracking, using only
+    free, no-key data."""
+    model_param, model_name = ENSEMBLE_MODELS[model_key]
+    findings = []
+
+    for lat, lon, region in ENSEMBLE_CHECK_POINTS:
+        cache_buster = int(time.time())
+        url = (
+            f"https://ensemble-api.open-meteo.com/v1/ensemble"
+            f"?latitude={lat}&longitude={lon}&hourly=pressure_msl"
+            f"&models={model_param}&forecast_days=6&_cb={cache_buster}"
+        )
+        data = _fetch_with_retries_bytes(url, f"Ensemble:{model_key}:{region}")
+        if not data:
+            continue
+        try:
+            parsed = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+
+        hourly = parsed.get("hourly", {})
+        member_keys = [k for k in hourly if k.startswith("pressure_msl_member")]
+        if not member_keys:
+            continue
+
+        for fh in GENESIS_CHECK_HOURS:
+            below_threshold = 0
+            total = 0
+            for mk in member_keys:
+                series = hourly[mk]
+                if fh >= len(series) or series[fh] is None:
+                    continue
+                total += 1
+                if series[fh] < DISTURBANCE_THRESHOLD_MB:
+                    below_threshold += 1
+            if total == 0:
+                continue
+            pct = round(100 * below_threshold / total)
+            if pct > 0:
+                findings.append({"region": region, "fh": fh, "pct": pct, "members": total})
+
+    if not findings:
+        return None
+    return {"model_name": model_name, "findings": findings}
+
+
+def build_ensemble_report(model_name, signal):
+    lines = [f"{model_name} -- genesis signal check", ""]
+    for f in signal["findings"]:
+        lines.append(
+            f"Hour {f['fh']}: {f['pct']}% of {f['members']} members show a "
+            f"developing low (<{DISTURBANCE_THRESHOLD_MB} mb) near {f['region']}"
+        )
+    lines.append("")
+    lines.append("Note: this is a rough ensemble-agreement signal at a few sample points, not a precise genesis probability map, and not an official NHC designation.")
+    return "\n".join(lines)
+
+
+def process_ensemble_genesis(model_key, state):
+    signal = fetch_ensemble_genesis_signal(model_key)
+    state_key = f"{model_key}_genesis_fingerprint"
+    if not signal:
+        if state.get(state_key):
+            del state[state_key]
+            save_state(state)
+        return
+
+    _, model_name = ENSEMBLE_MODELS[model_key]
+    fingerprint = json.dumps(signal["findings"], sort_keys=True)
+    if state.get(state_key) == fingerprint:
+        print(f"[{model_name}] Genesis signal unchanged -- not resending.")
+        return
+
+    message = build_ensemble_report(model_name, signal)
+    try:
+        deliver(message)
+    except Exception as e:
+        send_failure_alert(f"{model_name} genesis delivery", str(e))
+        return
+
+    print(f"[{model_name}] Genesis signal sent.")
+    state[state_key] = fingerprint
+    save_state(state)
+
+
 def main():
     state = load_state()
     storms = fetch_active_atlantic_storms()
@@ -457,6 +565,12 @@ def main():
         process_model_scan("ecmwf_det", "ecmwf", "ECMWF Deterministic", state)
     except Exception as e:
         print(f"[ECMWF Deterministic] Unexpected error (non-fatal): {e}")
+
+    for model_key in ENSEMBLE_MODELS:
+        try:
+            process_ensemble_genesis(model_key, state)
+        except Exception as e:
+            print(f"[{model_key}] Ensemble genesis check unexpected error (non-fatal): {e}")
 
 
 if __name__ == "__main__":
