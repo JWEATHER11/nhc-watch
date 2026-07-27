@@ -124,9 +124,20 @@ def build_warning_graphic_url(raw_text, warn_key):
     color = WARNING_TYPES[warn_key]["color"].replace("#", "%23")
     coord_str = ",".join(f"{lon},{lat}" for lon, lat in coords)
     geometry = f"polygon:{coord_str};fillcolor:{color};fillopacity:0.35;linecolor:{color};linewidth:3"
+
+    # Zoom out a bit from a tight fit so nearby towns/roads are visible
+    # for context, without zooming out so far the warning area looks tiny.
+    lons = [c[0] for c in coords]
+    lats = [c[1] for c in coords]
+    min_lon, max_lon = min(lons), max(lons)
+    min_lat, max_lat = min(lats), max(lats)
+    pad_lon = max((max_lon - min_lon) * 0.6, 0.08)
+    pad_lat = max((max_lat - min_lat) * 0.6, 0.08)
+    area = f"rect:{min_lon - pad_lon},{min_lat - pad_lat},{max_lon + pad_lon},{max_lat + pad_lat}"
+
     return (
         f"https://maps.geoapify.com/v1/staticmap?style=osm-carto"
-        f"&width=800&height=600&geometry={geometry}&apiKey={api_key}"
+        f"&width=800&height=600&area={area}&geometry={geometry}&apiKey={api_key}"
     )
 
 
