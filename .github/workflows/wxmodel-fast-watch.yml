@@ -1,0 +1,46 @@
+name: WX Model Data Fast Watch (Continuous)
+
+on:
+  schedule:
+    - cron: "55 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: wxmodel-fast-watch
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tzdata (safety net for timezone conversion)
+        run: pip install tzdata --break-system-packages
+
+      - name: Run continuous WX model polling loop
+        env:
+          WXMODEL_TELEGRAM_BOT_TOKEN: ${{ secrets.WXMODEL_TELEGRAM_BOT_TOKEN }}
+          WXMODEL_TELEGRAM_CHAT_ID: ${{ secrets.WXMODEL_TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python wxmodel_fast_loop.py
+
+      - name: Final state commit (safety net)
+        if: always()
+        run: |
+          git config user.name "wxmodel-fast-watch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add wxmodel_state.json
+          git diff --quiet --cached || git commit -m "Update WX model state [skip ci]"
+          git push || true
