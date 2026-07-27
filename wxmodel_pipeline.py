@@ -361,28 +361,50 @@ def fetch_model_grid(model_endpoint, forecast_hours=(0, 24, 48, 72, 96, 120)):
     return {"run_time": run_time, "results": results}
 
 
-def build_model_report(model_name, scan):
-    run_dt_str = scan["run_time"]
-    beaumont_str = "unknown time"
-    if run_dt_str:
-        try:
-            dt_utc = datetime.strptime(run_dt_str, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
-            dt_local = dt_utc.astimezone(BEAUMONT_TZ)
-            beaumont_str = dt_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
-        except ValueError:
-            pass
+def classify_region(lat, lon):
+    """Rough geographic classification for the Tropical
+    Atlantic/Caribbean/Gulf domain, per instruction -- so the report says
+    'Gulf of Mexico' or 'Caribbean' instead of just a raw lat/lon."""
+    if 18 <= lat <= 31 and -98 <= lon <= -81:
+        return "Gulf of Mexico"
+    if 9 <= lat <= 22 and -85 <= lon <= -60:
+        return "Caribbean Sea"
+    return "Open Tropical Atlantic"
 
-    lines = [f"{model_name} -- Atlantic/Caribbean/Gulf scan ({beaumont_str} run)", ""]
+
+def estimate_model_cycle(model_key):
+    """Open-Meteo's forecast responses always start at '0:00 today'
+    regardless of the actual model cycle used, so the exact init time
+    isn't directly exposed in the standard forecast response. This
+    estimates the most recent likely cycle (00/06/12/18Z) based on each
+    model's known update schedule and typical publication delay, and is
+    labeled clearly as an estimate."""
+    now_utc = datetime.now(timezone.utc)
+    delay_hours = 5 if model_key == "gfs_det" else 8  # GFS ~4-6h, ECMWF ~6-9h
+    effective_time = now_utc - __import__("datetime").timedelta(hours=delay_hours)
+    cycle_hour = (effective_time.hour // 6) * 6
+    cycle_dt = effective_time.replace(hour=cycle_hour, minute=0, second=0, microsecond=0)
+    return cycle_dt
+
+
+def build_model_report(model_key, model_name, scan):
+    cycle_dt_utc = estimate_model_cycle(model_key)
+    cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
+    beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
+    cycle_z = f"{cycle_dt_utc.hour:02d}Z"
+
+    lines = [f"{cycle_z} {model_name} -- Atlantic/Caribbean/Gulf scan (~{beaumont_str})", ""]
     for r in scan["results"]:
         wind_str = f", {r['wind_mph']} mph winds nearby" if r["wind_mph"] is not None else ""
         lat_dir = f"{abs(r['lat'])}N" if r["lat"] >= 0 else f"{abs(r['lat'])}S"
         lon_dir = f"{abs(r['lon'])}W" if r["lon"] <= 0 else f"{abs(r['lon'])}E"
+        region = classify_region(r["lat"], r["lon"])
         lines.append(
             f"Hour {r['fh']}: lowest pressure {r['mslp_mb']} mb near "
-            f"{lat_dir} {lon_dir}{wind_str}"
+            f"{lat_dir} {lon_dir} ({region}){wind_str}"
         )
     lines.append("")
-    lines.append("Note: this is a grid-sampled scan of the model's pressure field, not an official NHC designation.")
+    lines.append("Note: this is a grid-sampled scan of the model's pressure field, not an official NHC designation. Cycle time is estimated from the model's typical update schedule.")
     return "\n".join(lines)
 
 
@@ -398,7 +420,7 @@ def process_model_scan(model_key, model_endpoint, model_name, state):
         print(f"[{model_name}] Already reported this cycle -- not resending.")
         return
 
-    message = build_model_report(model_name, scan)
+    message = build_model_report(model_key, model_name, scan)
     try:
         deliver(message)
     except Exception as e:
