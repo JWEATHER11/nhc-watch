@@ -141,20 +141,61 @@ def build_warning_graphic_url(raw_text, warn_key):
     )
 
 
-def send_telegram_photo(photo_url, caption=""):
-    """Downloads the image ourselves and uploads the bytes directly to
-    Telegram (multipart/form-data), instead of asking Telegram to fetch
-    the URL itself -- confirmed more reliable; passing the raw URL to
-    Telegram got rejected with 'wrong type of the web page content'
-    even though the URL is a genuinely valid image. Single attempt,
-    short timeout -- the graphic is best-effort only and must NEVER
-    meaningfully delay the text."""
+def add_title_banner(image_bytes, title_text, banner_color):
+    """Composites a colored title banner above the map (matching the
+    reference NWS social-graphic style), using PIL since we already
+    control the raw image bytes. Falls back to the plain image
+    untouched if PIL isn't available or anything goes wrong -- this is
+    cosmetic only and must never break the actual graphic send."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import io as _io
+
+        map_img = Image.open(_io.BytesIO(image_bytes)).convert("RGB")
+        width, height = map_img.size
+        banner_height = 90
+
+        canvas = Image.new("RGB", (width, height + banner_height), banner_color)
+        canvas.paste(map_img, (0, banner_height))
+
+        draw = ImageDraw.Draw(canvas)
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 34)
+        except Exception:
+            font = ImageFont.load_default()
+
+        bbox = draw.textbbox((0, 0), title_text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        text_x = (width - text_width) // 2
+        text_y = (banner_height - text_height) // 2 - bbox[1]
+        draw.text((text_x, text_y), title_text, fill="white", font=font)
+
+        out = _io.BytesIO()
+        canvas.save(out, format="JPEG", quality=90)
+        return out.getvalue()
+    except Exception as e:
+        print(f"Title banner compositing failed (non-fatal, using plain map): {e}")
+        return image_bytes
+
+
+def send_telegram_photo(photo_url, caption="", title_text=None, banner_color="#333333"):
+    """Downloads the image ourselves, composites a title banner onto it,
+    and uploads the bytes directly to Telegram (multipart/form-data),
+    instead of asking Telegram to fetch the URL itself -- confirmed more
+    reliable; passing the raw URL to Telegram got rejected with 'wrong
+    type of the web page content' even though the URL is a genuinely
+    valid image. Single attempt, short timeout -- the graphic is
+    best-effort only and must NEVER meaningfully delay the text."""
     bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
     try:
         image_req = urllib.request.Request(photo_url, headers={"User-Agent": "nws-warnings-pipeline/1.0"})
         with urllib.request.urlopen(image_req, timeout=8) as img_resp:
             image_bytes = img_resp.read()
+
+        if title_text:
+            image_bytes = add_title_banner(image_bytes, title_text, banner_color)
 
         boundary = "----warningPhotoBoundary"
         parts = [
@@ -435,8 +476,10 @@ def process_warning(warn_key, office_key, state):
         try:
             photo_url = build_warning_graphic_url(text, warn_key)
             if photo_url:
-                title = f"\u26a0\ufe0f {WARNING_TYPES[warn_key]['label'].upper()} \u26a0\ufe0f\nNWS {OFFICES[office_key]}"
-                send_telegram_photo(photo_url, caption=title)
+                title = WARNING_TYPES[warn_key]["label"]
+                banner_color = WARNING_TYPES[warn_key]["color"]
+                caption = f"NWS {OFFICES[office_key]}"
+                send_telegram_photo(photo_url, caption=caption, title_text=title, banner_color=banner_color)
                 print(f"[{pil}] Graphic sent.")
             else:
                 print(f"[{pil}] No polygon found or Geoapify key missing -- skipping graphic (non-fatal).")
