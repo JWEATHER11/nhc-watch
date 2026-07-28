@@ -1,5 +1,6 @@
 {
   "quiet_announced_date": "2026-07-28",
   "gfs_det_cycle": "2026-07-28T00:00",
-  "ecmwf_det_cycle": "2026-07-28T00:00"
+  "ecmwf_det_cycle": "2026-07-28T00:00",
+  "last_combined_cycle": "2026-07-27T18"
 }
