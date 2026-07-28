@@ -644,7 +644,7 @@ def fetch_nhc_outlook_summary():
     return "; ".join(mentions[:6])
 
 
-def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary):
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None):
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
@@ -777,8 +777,9 @@ def process_combined_cycle(state):
     for model_key in ENSEMBLE_MODELS:
         ensemble_signals[model_key] = fetch_ensemble_genesis_signal(model_key)
     nhc_summary = fetch_nhc_outlook_summary()
+    rainfall_flags = fetch_gulf_coast_rainfall()
     cycle_hour_utc = int(cycle_key.split("T")[1])
-    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary)
+    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags)
     try:
         deliver(message)
     except Exception as e:
