@@ -934,6 +934,21 @@ def process_combined_cycle(state):
         return
     print(f"[Combined cycle] Sent {cycle_key} successfully.")
     state["last_combined_cycle"] = cycle_key
+
+    # Trending: store this cycle's snapshot, compare against the last
+    # two, and send a short second message right after the main one --
+    # per instruction, only flagging what's actually changed.
+    try:
+        snapshot = _sx.build_trend_snapshot(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
+        history = state.get(_sx.TREND_HISTORY_KEY, [])
+        history = [snapshot] + history[:2]
+        trend_message = _sx.build_trending_message(cycle_hour_utc, history)
+        deliver(trend_message)
+        state[_sx.TREND_HISTORY_KEY] = history
+        print(f"[Combined cycle] Trending message sent for {cycle_key}.")
+    except Exception as e:
+        print(f"[Combined cycle] Trending message failed (non-fatal): {e}")
+
     save_state(state)
 
 
