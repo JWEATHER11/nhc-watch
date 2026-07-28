@@ -304,14 +304,23 @@ SCAN_LATS = [5, 10, 15, 20, 25, 30]
 SCAN_LONS = [-90, -80, -70, -60, -50, -40, -30, -20]
 
 
-def fetch_model_grid(model_endpoint, forecast_hours=(0, 24, 48, 72, 96, 120), models_param=None, label=None):
+# Checkpoints spanning short (0-5 day), medium (7-10 day), and long
+# (12-14 day) range, per instruction to capture as much of each
+# model's real forecast horizon as possible, not just the first few
+# days. Easy to adjust.
+SHORT_MEDIUM_LONG_HOURS = (0, 24, 48, 72, 96, 120, 168, 240, 336)
+
+
+def fetch_model_grid(model_endpoint, forecast_hours=SHORT_MEDIUM_LONG_HOURS, models_param=None, label=None, forecast_days=15):
     """Queries an Open-Meteo forecast endpoint (GFS, ECMWF, or ECMWF
     with a specific models= override like AIFS) for pressure_msl and
     wind_speed_10m across the whole scan grid in a single batched
     request, then finds the lowest pressure (and nearby wind) at each
-    requested forecast hour. Pass models_param to pin a specific model
-    variant (e.g. 'ecmwf_aifs025_single' for ECMWF's AI model) instead
-    of the endpoint's default auto-selected model."""
+    requested forecast hour, out through medium/long range. Pass
+    models_param to pin a specific model variant (e.g.
+    'ecmwf_aifs025_single' for ECMWF's AI model) instead of the
+    endpoint's default auto-selected model; forecast_days defaults to
+    15 (GFS supports up to 16 -- pass 16 explicitly for GFS calls)."""
     lat_str = ",".join(str(lat) for lat in SCAN_LATS for _ in SCAN_LONS)
     lon_str = ",".join(str(lon) for _ in SCAN_LATS for lon in SCAN_LONS)
     cache_buster = int(time.time())
@@ -319,7 +328,7 @@ def fetch_model_grid(model_endpoint, forecast_hours=(0, 24, 48, 72, 96, 120), mo
     url = (
         f"https://api.open-meteo.com/v1/{model_endpoint}"
         f"?latitude={lat_str}&longitude={lon_str}"
-        f"&hourly=pressure_msl,wind_speed_10m&forecast_days=6{models_bit}&_cb={cache_buster}"
+        f"&hourly=pressure_msl,wind_speed_10m&forecast_days={forecast_days}{models_bit}&_cb={cache_buster}"
     )
     data = _fetch_with_retries_bytes(url, label or f"OpenMeteo:{model_endpoint}")
     if not data:
@@ -456,7 +465,9 @@ ENSEMBLE_MODELS = {
 }
 
 DISTURBANCE_THRESHOLD_MB = 1008  # rough threshold suggesting a developing low
-GENESIS_CHECK_HOURS = (24, 72, 120)
+# Short, medium, and long range checkpoints -- extends genesis checking
+# out through ~14 days instead of stopping at day 5, per instruction.
+GENESIS_CHECK_HOURS = (24, 72, 120, 168, 240, 336)
 
 # A handful of members dipping below the pressure threshold by chance is
 # normal background noise, not a real signal -- only count it as a
@@ -467,8 +478,8 @@ MIN_ENSEMBLE_AGREEMENT_PCT = 15
 # Google WeatherNext gets a longer look (its full ~15-day range) since
 # it's the priority model here; the older ensembles stay at the
 # standard 6-day check.
-GOOGLE_AI_FORECAST_DAYS = 10
-DEFAULT_ENSEMBLE_FORECAST_DAYS = 6
+GOOGLE_AI_FORECAST_DAYS = 15  # Google WeatherNext's actual max range
+DEFAULT_ENSEMBLE_FORECAST_DAYS = 15  # GEFS/ECMWF Ensemble also support out to ~15-16 days
 
 
 def fetch_ensemble_genesis_signal(model_key):
@@ -655,9 +666,9 @@ def process_combined_cycle(state):
     if state.get("last_combined_cycle") == cycle_key:
         print(f"[Combined cycle] Already sent {cycle_key} -- not resending.")
         return
-    gfs_scan = fetch_model_grid("gfs")
-    ecmwf_scan = fetch_model_grid("ecmwf")
-    aifs_scan = fetch_model_grid("ecmwf", models_param="ecmwf_aifs025_single", label="OpenMeteo:AIFS")
+    gfs_scan = fetch_model_grid("gfs", forecast_days=16)
+    ecmwf_scan = fetch_model_grid("ecmwf", forecast_days=15)
+    aifs_scan = fetch_model_grid("ecmwf", models_param="ecmwf_aifs025_single", label="OpenMeteo:AIFS", forecast_days=15)
     ensemble_signals = {}
     for model_key in ENSEMBLE_MODELS:
         ensemble_signals[model_key] = fetch_ensemble_genesis_signal(model_key)
