@@ -644,7 +644,7 @@ def fetch_nhc_outlook_summary():
     return "; ".join(mentions[:6])
 
 
-def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None):
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None):
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
@@ -711,6 +711,10 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     lines.append("SETX/SWLA LOCAL RAINFALL OUTLOOK (Houston to Lake Charles)")
     import setx_swla_extra as _sx2
     lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
+    front_lines = _sx2.build_front_signal_section(front_signal)
+    if front_lines:
+        lines.append("")
+        lines.extend(front_lines)
     if ndfd_summary:
         lines.append("")
         lines.append("NWS comparison (brief): " + "; ".join(ndfd_summary))
@@ -920,8 +924,9 @@ def process_combined_cycle(state):
     import setx_swla_extra as _sx
     setx_swla_outlook = _sx.fetch_setx_swla_rainfall_outlook()
     ndfd_summary = _sx.fetch_ndfd_qpf_summary()
+    front_signal = _sx.fetch_front_signal()
     cycle_hour_utc = int(cycle_key.split("T")[1])
-    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary)
+    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal)
     try:
         deliver(message)
     except Exception as e:
