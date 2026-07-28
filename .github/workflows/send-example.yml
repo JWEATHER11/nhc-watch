@@ -1,0 +1,23 @@
+name: Send Example (one-off)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install tzdata --break-system-packages
+      - name: Send example
+        env:
+          WXMODEL_TELEGRAM_BOT_TOKEN: ${{ secrets.WXMODEL_TELEGRAM_BOT_TOKEN }}
+          WXMODEL_TELEGRAM_CHAT_ID: ${{ secrets.WXMODEL_TELEGRAM_CHAT_ID }}
+        run: python send_example.py
