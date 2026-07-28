@@ -285,3 +285,87 @@ def build_front_signal_section(signal):
     if signal["cooling_signal"]:
         lines.append(f"- Temperature trend (Euro): up to {signal['temp_drop_f']}F cooler within 24h somewhere in the corridor")
     return lines or None
+
+
+# --- Trending (compares last 3 cycles) -------------------------------
+# Sent as a short, separate message right after the main cycle update,
+# per instruction -- only calls out what's actually changed.
+
+TREND_HISTORY_KEY = "trend_snapshots"
+TREND_RAIN_CHANGE_THRESHOLD_IN = 0.3
+TREND_COVERAGE_CHANGE_THRESHOLD_PCT = 15
+TREND_TEMP_CHANGE_THRESHOLD_F = 5.0
+TREND_PRESSURE_CHANGE_THRESHOLD_MB = 3.0
+
+
+def build_trend_snapshot(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan):
+    """A compact snapshot of the key numbers from this cycle, stored so
+    the next 1-2 cycles can be compared against it."""
+    snapshot = {}
+    if setx_swla_outlook:
+        snapshot["short_rain_in"] = setx_swla_outlook.get("short_gfs_in")
+        snapshot["coverage_pct"] = setx_swla_outlook.get("coverage_pct")
+    if front_signal:
+        snapshot["temp_drop_f"] = front_signal.get("temp_drop_f")
+    lowest_mb = None
+    for scan in (gfs_scan, ecmwf_scan):
+        if scan and scan.get("results"):
+            best = min(scan["results"], key=lambda r: r["mslp_mb"])
+            if lowest_mb is None or best["mslp_mb"] < lowest_mb:
+                lowest_mb = best["mslp_mb"]
+    if lowest_mb is not None:
+        snapshot["tropical_lowest_mb"] = lowest_mb
+    return snapshot
+
+
+def build_trending_message(cycle_hour_utc, history):
+    """history is a list of up to 3 snapshots, newest first (index 0 =
+    this cycle, 1 = previous, 2 = the one before that). Only flags what
+    actually changed, per instruction -- otherwise says so plainly."""
+    if len(history) < 2:
+        return f"Trending ({cycle_hour_utc:02d}Z): Not enough prior cycles yet to compare."
+
+    current = history[0]
+    previous = history[1]
+    notes = []
+
+    cur_rain = current.get("short_rain_in")
+    prev_rain = previous.get("short_rain_in")
+    if cur_rain is not None and prev_rain is not None:
+        diff = cur_rain - prev_rain
+        if diff >= TREND_RAIN_CHANGE_THRESHOLD_IN:
+            notes.append(f"Trending: Rainfall totals increasing over recent runs (+{round(diff,1)}\").")
+        elif diff <= -TREND_RAIN_CHANGE_THRESHOLD_IN:
+            notes.append(f"Trending: Rainfall totals decreasing over recent runs ({round(diff,1)}\").")
+
+    cur_cov = current.get("coverage_pct")
+    prev_cov = previous.get("coverage_pct")
+    if cur_cov is not None and prev_cov is not None:
+        diff = cur_cov - prev_cov
+        if diff >= TREND_COVERAGE_CHANGE_THRESHOLD_PCT:
+            notes.append(f"Trending: Storm coverage expanding vs previous runs (+{diff}%).")
+        elif diff <= -TREND_COVERAGE_CHANGE_THRESHOLD_PCT:
+            notes.append(f"Trending: Storm coverage shrinking vs previous runs ({diff}%).")
+
+    cur_temp_drop = current.get("temp_drop_f")
+    prev_temp_drop = previous.get("temp_drop_f")
+    if cur_temp_drop is not None and prev_temp_drop is not None:
+        diff = cur_temp_drop - prev_temp_drop
+        if diff >= TREND_TEMP_CHANGE_THRESHOLD_F:
+            notes.append("Trending: Stronger cold front signal -- temperatures trending colder run over run.")
+
+    cur_mb = current.get("tropical_lowest_mb")
+    prev_mb = previous.get("tropical_lowest_mb")
+    if cur_mb is not None and prev_mb is not None:
+        diff = prev_mb - cur_mb  # positive = deepening
+        if diff >= TREND_PRESSURE_CHANGE_THRESHOLD_MB:
+            notes.append(f"Trending: Tropical signal deepening/more organized vs previous runs (-{round(diff,1)} mb).")
+        elif diff <= -TREND_PRESSURE_CHANGE_THRESHOLD_MB:
+            notes.append(f"Trending: Tropical signal weakening/less organized vs previous runs (+{round(-diff,1)} mb).")
+    elif cur_mb is not None and prev_mb is None:
+        notes.append("Trending: New tropical signal showing up that wasn't there last run.")
+
+    if not notes:
+        return f"Trending ({cycle_hour_utc:02d}Z): No significant change from previous runs."
+
+    return f"Trending ({cycle_hour_utc:02d}Z):\n" + "\n".join(notes)
