@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import wxmodel_pipeline as w
+import setx_swla_extra as sx
 
 gfs_scan = w.fetch_model_grid("gfs", forecast_days=16)
 ecmwf_scan = w.fetch_model_grid("ecmwf", forecast_days=15)
@@ -9,9 +10,10 @@ for model_key in w.ENSEMBLE_MODELS:
     ensemble_signals[model_key] = w.fetch_ensemble_genesis_signal(model_key)
 nhc_summary = w.fetch_nhc_outlook_summary()
 rainfall_flags = w.fetch_gulf_coast_rainfall()
-setx_swla_outlook = w.fetch_setx_swla_rainfall_outlook()
+setx_swla_outlook = sx.fetch_setx_swla_rainfall_outlook()
+ndfd_summary = sx.fetch_ndfd_qpf_summary()
 cycle_hour_utc = int(w.current_cycle_key().split("T")[1])
-message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook)
+message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary)
 print(message)
 w.deliver(message)
 print("SENT")
