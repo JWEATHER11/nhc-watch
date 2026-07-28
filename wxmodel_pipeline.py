@@ -709,6 +709,13 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     lines.append("SETX/SWLA LOCAL RAINFALL OUTLOOK (Houston to Lake Charles)")
     import setx_swla_extra as _sx2
     lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
+    try:
+        conditions_detail = _sx2.fetch_conditions_detail()
+        conditions_lines = _sx2.build_conditions_section(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
+        if conditions_lines:
+            lines.extend(conditions_lines)
+    except Exception as e:
+        print(f"[Combined cycle] Conditions detail unavailable (non-fatal): {e}")
     front_lines = _sx2.build_front_signal_section(front_signal)
     if front_lines:
         lines.append("")
@@ -727,6 +734,10 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         lines.append("Summary: Signals of possible tropical development noted above -- worth watching closely.")
     else:
         lines.append("Summary: Quiet. No significant tropical signals detected this cycle.")
+
+    lines.append("")
+    lines.append("Expect updates roughly: 00Z ~12AM, 06Z ~6AM, 12Z ~12PM, 18Z ~6PM (Beaumont time)")
+
     return "\n".join(lines)
 
 
