@@ -644,11 +644,13 @@ def fetch_nhc_outlook_summary():
     return "; ".join(mentions[:6])
 
 
-def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None):
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None):
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
     lines = ["Tropical Watch -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
+    lines.append("Expect updates roughly: 00Z ~5-8AM, 06Z ~11AM-2PM, 12Z ~5-8PM, 18Z ~11PM-2AM (Beaumont time)")
+    lines.append("")
     lines.append("MAIN MODELS")
     for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
         if scan and scan.get("results"):
@@ -707,7 +709,11 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
 
     lines.append("")
     lines.append("SETX/SWLA LOCAL RAINFALL OUTLOOK (Houston to Lake Charles)")
-    lines.extend(build_setx_swla_section(setx_swla_outlook))
+    import setx_swla_extra as _sx2
+    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
+    if ndfd_summary:
+        lines.append("")
+        lines.append("NWS comparison (brief): " + "; ".join(ndfd_summary))
         # Heavy rain by itself (even multi-model) is routine Gulf Coast
         # summer weather, not necessarily tropical -- it stays as
         # useful information here but does NOT alone flip the summary
@@ -911,9 +917,11 @@ def process_combined_cycle(state):
         ensemble_signals[model_key] = fetch_ensemble_genesis_signal(model_key)
     nhc_summary = fetch_nhc_outlook_summary()
     rainfall_flags = fetch_gulf_coast_rainfall()
-    setx_swla_outlook = fetch_setx_swla_rainfall_outlook()
+    import setx_swla_extra as _sx
+    setx_swla_outlook = _sx.fetch_setx_swla_rainfall_outlook()
+    ndfd_summary = _sx.fetch_ndfd_qpf_summary()
     cycle_hour_utc = int(cycle_key.split("T")[1])
-    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook)
+    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary)
     try:
         deliver(message)
     except Exception as e:
