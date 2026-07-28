@@ -158,7 +158,24 @@ def summarize_model_guidance(rows):
     return summaries
 
 
-def build_storm_report(storm, summaries):
+def classify_intensity_trend(prev_vmax_kt, current_vmax_kt):
+    """Compares consecutive-cycle peak winds for the same model --
+    NHC's own rapid intensification threshold is a 30 kt increase in 24
+    hours, so that's used here as the trigger for calling it out
+    explicitly, per instruction."""
+    if prev_vmax_kt is None or current_vmax_kt is None:
+        return None
+    delta = current_vmax_kt - prev_vmax_kt
+    if delta >= 30:
+        return "RAPID INTENSIFICATION"
+    if delta >= 10:
+        return "strengthening"
+    if delta <= -10:
+        return "weakening"
+    return "steady"
+
+
+def build_storm_report(storm, summaries, previous_summaries=None):
     name = storm.get("name", "Unknown")
     classification = storm.get("classification", "")
     storm_id = storm.get("id", "").upper()
@@ -167,6 +184,8 @@ def build_storm_report(storm, summaries):
     if not summaries:
         lines.append("No model guidance available yet for this system.")
         return "\n".join(lines)
+
+    previous_summaries = previous_summaries or {}
 
     # Prefer a stable, readable order.
     order = ["AVNO", "AVNI", "EMX", "EMXI", "HWRF", "HAFA", "HAFB"]
@@ -178,9 +197,12 @@ def build_storm_report(storm, summaries):
         beaumont_time = to_beaumont_str(s["cycle"])
         pressure_str = f", {s['mslp']} mb" if s["mslp"] else ""
         model_name = MODELS_OF_INTEREST[tech]
+        prev = previous_summaries.get(tech)
+        trend = classify_intensity_trend(prev["vmax_kt"], s["vmax_kt"]) if prev else None
+        trend_str = f" -- {trend}" if trend else ""
         lines.append(
             f"{model_name}: {mph} mph ({s['vmax_kt']} kt){pressure_str} "
-            f"at hour {s['tau']} -- from {beaumont_time} run"
+            f"at hour {s['tau']} -- from {beaumont_time} run{trend_str}"
         )
     return "\n".join(lines)
 
@@ -259,7 +281,8 @@ def process_storm(storm, state):
         return
 
     print(f"[{storm_id}] New model guidance detected -- sending.")
-    message = build_storm_report(storm, summaries)
+    previous_summaries = state.get(f"{storm_id}_summaries")
+    message = build_storm_report(storm, summaries, previous_summaries=previous_summaries)
 
     try:
         deliver(message)
@@ -269,6 +292,7 @@ def process_storm(storm, state):
 
     print(f"[{storm_id}] Sent successfully.")
     state[storm_id] = fingerprint
+    state[f"{storm_id}_summaries"] = summaries
     save_state(state)
 
 
