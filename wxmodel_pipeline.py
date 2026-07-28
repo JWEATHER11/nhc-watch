@@ -304,20 +304,24 @@ SCAN_LATS = [5, 10, 15, 20, 25, 30]
 SCAN_LONS = [-90, -80, -70, -60, -50, -40, -30, -20]
 
 
-def fetch_model_grid(model_endpoint, forecast_hours=(0, 24, 48, 72, 96, 120)):
-    """Queries Open-Meteo's GFS or ECMWF endpoint for pressure_msl and
+def fetch_model_grid(model_endpoint, forecast_hours=(0, 24, 48, 72, 96, 120), models_param=None, label=None):
+    """Queries an Open-Meteo forecast endpoint (GFS, ECMWF, or ECMWF
+    with a specific models= override like AIFS) for pressure_msl and
     wind_speed_10m across the whole scan grid in a single batched
     request, then finds the lowest pressure (and nearby wind) at each
-    requested forecast hour."""
+    requested forecast hour. Pass models_param to pin a specific model
+    variant (e.g. 'ecmwf_aifs025_single' for ECMWF's AI model) instead
+    of the endpoint's default auto-selected model."""
     lat_str = ",".join(str(lat) for lat in SCAN_LATS for _ in SCAN_LONS)
     lon_str = ",".join(str(lon) for _ in SCAN_LATS for lon in SCAN_LONS)
     cache_buster = int(time.time())
+    models_bit = f"&models={models_param}" if models_param else ""
     url = (
         f"https://api.open-meteo.com/v1/{model_endpoint}"
         f"?latitude={lat_str}&longitude={lon_str}"
-        f"&hourly=pressure_msl,wind_speed_10m&forecast_days=6&_cb={cache_buster}"
+        f"&hourly=pressure_msl,wind_speed_10m&forecast_days=6{models_bit}&_cb={cache_buster}"
     )
-    data = _fetch_with_retries_bytes(url, f"OpenMeteo:{model_endpoint}")
+    data = _fetch_with_retries_bytes(url, label or f"OpenMeteo:{model_endpoint}")
     if not data:
         return None
     try:
@@ -594,7 +598,7 @@ def fetch_nhc_outlook_summary():
     return "; ".join(mentions[:6])
 
 
-def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary):
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary):
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
@@ -615,6 +619,13 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
     is_interesting = False
     lines.append("")
     lines.append("SIDE NOTES")
+    if aifs_scan and aifs_scan.get("results"):
+        best = min(aifs_scan["results"], key=lambda r: r["mslp_mb"])
+        region = classify_region(best["lat"], best["lon"])
+        wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
+        lines.append(f"- ECMWF AIFS (AI): lowest {best['mslp_mb']} mb near {region} by hour {best['fh']}{wind_str}")
+    else:
+        lines.append("- ECMWF AIFS (AI): data unavailable this cycle")
     for model_key, signal in ensemble_signals.items():
         _, model_name = ENSEMBLE_MODELS[model_key]
         if signal and signal.get("findings"):
@@ -646,12 +657,13 @@ def process_combined_cycle(state):
         return
     gfs_scan = fetch_model_grid("gfs")
     ecmwf_scan = fetch_model_grid("ecmwf")
+    aifs_scan = fetch_model_grid("ecmwf", models_param="ecmwf_aifs025_single", label="OpenMeteo:AIFS")
     ensemble_signals = {}
     for model_key in ENSEMBLE_MODELS:
         ensemble_signals[model_key] = fetch_ensemble_genesis_signal(model_key)
     nhc_summary = fetch_nhc_outlook_summary()
     cycle_hour_utc = int(cycle_key.split("T")[1])
-    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary)
+    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary)
     try:
         deliver(message)
     except Exception as e:
