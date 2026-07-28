@@ -26,7 +26,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 CURRENT_STORMS_URL = "https://www.nhc.noaa.gov/CurrentStorms.json"
@@ -540,10 +540,104 @@ def process_ensemble_genesis(model_key, state):
     save_state(state)
 
 
+INTERESTING_MSLP_THRESHOLD_MB = DISTURBANCE_THRESHOLD_MB
+
+
+def current_cycle_key():
+    now_utc = datetime.now(timezone.utc)
+    effective_time = now_utc - timedelta(hours=6)
+    cycle_hour = (effective_time.hour // 6) * 6
+    cycle_date = effective_time.strftime("%Y-%m-%d")
+    return f"{cycle_date}T{cycle_hour:02d}"
+
+
+def fetch_nhc_outlook_summary():
+    cache_buster = int(time.time())
+    url = f"https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py?pil=TWOAT&_cb={cache_buster}"
+    data = _fetch_with_retries_bytes(url, "NHC:TWOAT")
+    if not data:
+        return None
+    text = data.decode("utf-8", errors="replace")
+    text = text.split("\x01")[-1] if "\x01" in text else text
+    text = text.replace("\x03", "").strip()
+    lower = text.lower()
+    if "tropical cyclone formation is not expected" in lower and "percent" not in lower:
+        return "No areas of interest noted by NHC."
+    mentions = re.findall(
+        r"Formation chance through 48 hours\.\.\.\w+\.\.\.\d+ percent"
+        r"|Formation chance through 7 days\.\.\.\w+\.\.\.\d+ percent",
+        text,
+    )
+    if not mentions:
+        return "No formation percentages currently listed by NHC."
+    return "; ".join(mentions[:6])
+
+
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary):
+    cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
+    cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
+    beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
+    lines = ["Tropical Watch -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
+    lines.append("MAIN MODELS")
+    is_interesting = False
+    for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
+        if scan and scan.get("results"):
+            best = min(scan["results"], key=lambda r: r["mslp_mb"])
+            region = classify_region(best["lat"], best["lon"])
+            wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
+            lines.append(f"- {label}: lowest {best['mslp_mb']} mb near {region} by hour {best['fh']}{wind_str}")
+            if best["mslp_mb"] < INTERESTING_MSLP_THRESHOLD_MB:
+                is_interesting = True
+        else:
+            lines.append(f"- {label}: data unavailable this cycle")
+    lines.append("")
+    lines.append("SIDE NOTES")
+    for model_key, signal in ensemble_signals.items():
+        _, model_name = ENSEMBLE_MODELS[model_key]
+        if signal and signal.get("findings"):
+            top = max(signal["findings"], key=lambda f: f["pct"])
+            lines.append(f"- {model_name}: {top['pct']}% of members show a developing low near {top['region']} by hour {top['fh']}")
+            is_interesting = True
+        else:
+            lines.append(f"- {model_name}: no signal above threshold")
+    nhc_line = nhc_summary or "unavailable this cycle"
+    lines.append(f"- NHC: {nhc_line}")
+    if nhc_summary and "percent" in nhc_summary:
+        is_interesting = True
+    lines.append("")
+    if is_interesting:
+        lines.append("Summary: Signals of possible tropical development noted above -- worth watching closely.")
+    else:
+        lines.append("Summary: Quiet. No significant tropical signals detected this cycle.")
+    return "\n".join(lines)
+
+
+def process_combined_cycle(state):
+    cycle_key = current_cycle_key()
+    if state.get("last_combined_cycle") == cycle_key:
+        print(f"[Combined cycle] Already sent {cycle_key} -- not resending.")
+        return
+    gfs_scan = fetch_model_grid("gfs")
+    ecmwf_scan = fetch_model_grid("ecmwf")
+    ensemble_signals = {}
+    for model_key in ENSEMBLE_MODELS:
+        ensemble_signals[model_key] = fetch_ensemble_genesis_signal(model_key)
+    nhc_summary = fetch_nhc_outlook_summary()
+    cycle_hour_utc = int(cycle_key.split("T")[1])
+    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary)
+    try:
+        deliver(message)
+    except Exception as e:
+        send_failure_alert("Combined cycle delivery", str(e))
+        return
+    print(f"[Combined cycle] Sent {cycle_key} successfully.")
+    state["last_combined_cycle"] = cycle_key
+    save_state(state)
+
+
 def main():
     state = load_state()
     storms = fetch_active_atlantic_storms()
-
     if not storms:
         try:
             process_quiet_basin(state)
@@ -555,22 +649,10 @@ def main():
                 process_storm(storm, state)
             except Exception as e:
                 print(f"[{storm.get('id')}] Unexpected error (non-fatal, continuing): {e}")
-
     try:
-        process_model_scan("gfs_det", "gfs", "GFS Deterministic", state)
+        process_combined_cycle(state)
     except Exception as e:
-        print(f"[GFS Deterministic] Unexpected error (non-fatal): {e}")
-
-    try:
-        process_model_scan("ecmwf_det", "ecmwf", "ECMWF Deterministic", state)
-    except Exception as e:
-        print(f"[ECMWF Deterministic] Unexpected error (non-fatal): {e}")
-
-    for model_key in ENSEMBLE_MODELS:
-        try:
-            process_ensemble_genesis(model_key, state)
-        except Exception as e:
-            print(f"[{model_key}] Ensemble genesis check unexpected error (non-fatal): {e}")
+        print(f"[Combined cycle] Unexpected error (non-fatal): {e}")
 
 
 if __name__ == "__main__":
