@@ -741,12 +741,10 @@ GULF_COAST_RAIN_POINTS = [
 
 # Total forecast rainfall at or above this is flagged as notable, per
 # instruction. Easy to adjust.
-HEAVY_RAIN_THRESHOLD_INCHES = 4.0
+HEAVY_RAIN_THRESHOLD_INCHES = 1.0
 
 
 def _fetch_rainfall_totals(endpoint):
-    """Fetches 10-day rainfall totals at every Gulf Coast point for one
-    model endpoint ('gfs' or 'ecmwf'). Returns {place_name: total_in}."""
     lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
     lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
     cache_buster = int(time.time())
@@ -764,7 +762,6 @@ def _fetch_rainfall_totals(endpoint):
         return {}
     if not isinstance(points, list):
         return {}
-
     totals = {}
     for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
         try:
@@ -776,28 +773,58 @@ def _fetch_rainfall_totals(endpoint):
     return totals
 
 
+def _fetch_rainfall_totals_google_ai():
+    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
+    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
+    cache_buster = int(time.time())
+    url = (
+        f"https://ensemble-api.open-meteo.com/v1/ensemble"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=precipitation_sum&models=google_weathernext2_ensemble"
+        f"&forecast_days=10&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:google_ai")
+    if not data:
+        return {}
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    if not isinstance(points, list):
+        return {}
+    totals = {}
+    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
+        daily = point.get("daily", {})
+        member_keys = [k for k in daily if k.startswith("precipitation_sum_member")]
+        if not member_keys:
+            continue
+        member_totals = []
+        for mk in member_keys:
+            vals = daily[mk]
+            member_totals.append(sum(v for v in vals if v is not None))
+        if member_totals:
+            avg_mm = sum(member_totals) / len(member_totals)
+            totals[place_name] = round(avg_mm / 25.4, 1)
+    return totals
+
+
 def fetch_gulf_coast_rainfall():
-    """Checks total forecast rainfall at representative Gulf Coast
-    points using BOTH GFS and Euro (per instruction -- always say which
-    model is showing it, rather than a single unlabeled source), flagging
-    any that show notably heavy totals from at least one of them. Watches
-    specifically for Texas, Louisiana, and the rest of the Gulf Coast
-    through Florida."""
-    gfs_totals = _fetch_rainfall_totals("gfs")
-    ecmwf_totals = _fetch_rainfall_totals("ecmwf")
-
-    flagged = []
-    for _, _, place_name in GULF_COAST_RAIN_POINTS:
-        gfs_val = gfs_totals.get(place_name)
-        ecmwf_val = ecmwf_totals.get(place_name)
-        if (gfs_val is not None and gfs_val >= HEAVY_RAIN_THRESHOLD_INCHES) or \
-           (ecmwf_val is not None and ecmwf_val >= HEAVY_RAIN_THRESHOLD_INCHES):
-            flagged.append({"place": place_name, "gfs_in": gfs_val, "ecmwf_in": ecmwf_val})
-
-    if not flagged:
+    model_totals = {
+        "GFS": _fetch_rainfall_totals("gfs"),
+        "Euro": _fetch_rainfall_totals("ecmwf"),
+        "Google AI": _fetch_rainfall_totals_google_ai(),
+    }
+    results = {}
+    for model_name, totals in model_totals.items():
+        if not totals:
+            continue
+        heaviest_place = max(totals, key=lambda p: totals[p])
+        heaviest_val = totals[heaviest_place]
+        if heaviest_val >= HEAVY_RAIN_THRESHOLD_INCHES:
+            results[model_name] = {"place": heaviest_place, "total_in": heaviest_val}
+    if not results:
         return None
-    flagged.sort(key=lambda f: -max(f["gfs_in"] or 0, f["ecmwf_in"] or 0))
-    return flagged
+    return results
 
 
 def process_combined_cycle(state):
