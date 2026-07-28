@@ -666,10 +666,20 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         if signal and signal.get("findings"):
             if model_key == "google_ai":
                 for f in signal["findings"]:
-                    lines.append(f"- {model_name}: {f['pct']}% of members show a developing low near {f['region']} by hour {f['fh']}")
+                    lines.append(f"- {model_name}: {tier_label(f['pct'])} ({f['pct']}%) of members show a developing low near {f['region']} by hour {f['fh']}")
             else:
                 top = max(signal["findings"], key=lambda f: f["pct"])
-                lines.append(f"- {model_name}: {top['pct']}% of members show a developing low near {top['region']} by hour {top['fh']}")
+                lines.append(f"- {model_name}: {tier_label(top['pct'])} ({top['pct']}%) of members show a developing low near {top['region']} by hour {top['fh']}")
+            # Track split -- if this model's findings span more than one
+            # region, spell out the percentage breakdown explicitly so
+            # it reads like real track guidance (Gulf X%, Caribbean Y%,
+            # Atlantic Z%), not just a single number.
+            by_region = {}
+            for f in signal["findings"]:
+                by_region[f["region"]] = max(by_region.get(f["region"], 0), f["pct"])
+            if len(by_region) > 1:
+                split_str = ", ".join(f"{region} {pct}%" for region, pct in sorted(by_region.items(), key=lambda kv: -kv[1]))
+                lines.append(f"  Track split: {split_str}")
             is_interesting = True
         else:
             lines.append(f"- {model_name}: no signal above threshold")
