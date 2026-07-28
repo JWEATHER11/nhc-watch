@@ -701,10 +701,20 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
 
     if rainfall_flags:
         lines.append("")
-        lines.append("GULF COAST RAINFALL WATCH")
+        lines.append("GULF COAST RAINFALL WATCH (next 10 days)")
         for f in rainfall_flags:
-            lines.append(f"- {f['place']}: {f['total_in']}\" forecast total (next 10 days)")
-        is_interesting = True
+            parts = []
+            if f["gfs_in"] is not None:
+                parts.append(f"GFS shows {f['gfs_in']}\"")
+            if f["ecmwf_in"] is not None:
+                parts.append(f"Euro shows {f['ecmwf_in']}\"")
+            detail = ", ".join(parts) if parts else "model data unavailable"
+            lines.append(f"- {f['place']}: {detail}")
+        # Heavy rain by itself (even multi-model) is routine Gulf Coast
+        # summer weather, not necessarily tropical -- it stays as
+        # useful information here but does NOT alone flip the summary
+        # into 'tropical development' language. Only genuine ensemble
+        # agreement or an explicit NHC mention does that.
 
     lines.append("")
     if is_interesting:
@@ -734,42 +744,59 @@ GULF_COAST_RAIN_POINTS = [
 HEAVY_RAIN_THRESHOLD_INCHES = 4.0
 
 
-def fetch_gulf_coast_rainfall():
-    """Checks total forecast rainfall (GFS) at representative Gulf Coast
-    points, flagging any that show notably heavy totals -- per
-    instruction, watching specifically for Texas, Louisiana, and the
-    rest of the Gulf Coast through Florida."""
+def _fetch_rainfall_totals(endpoint):
+    """Fetches 10-day rainfall totals at every Gulf Coast point for one
+    model endpoint ('gfs' or 'ecmwf'). Returns {place_name: total_in}."""
     lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
     lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
     cache_buster = int(time.time())
     url = (
-        f"https://api.open-meteo.com/v1/gfs"
+        f"https://api.open-meteo.com/v1/{endpoint}"
         f"?latitude={lat_str}&longitude={lon_str}"
         f"&daily=precipitation_sum&forecast_days=10&_cb={cache_buster}"
     )
-    data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:GFS")
+    data = _fetch_with_retries_bytes(url, f"GulfCoastRainfall:{endpoint}")
     if not data:
-        return None
+        return {}
     try:
         points = json.loads(data.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return None
+        return {}
     if not isinstance(points, list):
-        return None
+        return {}
 
-    flagged = []
+    totals = {}
     for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
         try:
             totals_mm = point["daily"]["precipitation_sum"]
         except (KeyError, TypeError):
             continue
         total_in = sum(v for v in totals_mm if v is not None) / 25.4
-        if total_in >= HEAVY_RAIN_THRESHOLD_INCHES:
-            flagged.append({"place": place_name, "total_in": round(total_in, 1)})
+        totals[place_name] = round(total_in, 1)
+    return totals
+
+
+def fetch_gulf_coast_rainfall():
+    """Checks total forecast rainfall at representative Gulf Coast
+    points using BOTH GFS and Euro (per instruction -- always say which
+    model is showing it, rather than a single unlabeled source), flagging
+    any that show notably heavy totals from at least one of them. Watches
+    specifically for Texas, Louisiana, and the rest of the Gulf Coast
+    through Florida."""
+    gfs_totals = _fetch_rainfall_totals("gfs")
+    ecmwf_totals = _fetch_rainfall_totals("ecmwf")
+
+    flagged = []
+    for _, _, place_name in GULF_COAST_RAIN_POINTS:
+        gfs_val = gfs_totals.get(place_name)
+        ecmwf_val = ecmwf_totals.get(place_name)
+        if (gfs_val is not None and gfs_val >= HEAVY_RAIN_THRESHOLD_INCHES) or \
+           (ecmwf_val is not None and ecmwf_val >= HEAVY_RAIN_THRESHOLD_INCHES):
+            flagged.append({"place": place_name, "gfs_in": gfs_val, "ecmwf_in": ecmwf_val})
 
     if not flagged:
         return None
-    flagged.sort(key=lambda f: -f["total_in"])
+    flagged.sort(key=lambda f: -max(f["gfs_in"] or 0, f["ecmwf_in"] or 0))
     return flagged
 
 
