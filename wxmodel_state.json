@@ -2,10 +2,9 @@
   "quiet_announced_date": "2026-07-28",
   "gfs_det_cycle": "2026-07-28T00:00",
   "ecmwf_det_cycle": "2026-07-28T00:00",
-  "last_combined_cycle": "2026-07-28T18",
   "trend_snapshots": [
     {
-      "short_rain_in": 0.0,
+      "short_rain_in": 0,
       "coverage_pct": 0,
       "temp_drop_f": 7.2,
       "tropical_lowest_mb": 1007.2
