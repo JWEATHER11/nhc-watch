@@ -441,14 +441,30 @@ ENSEMBLE_CHECK_POINTS = [
     (15.0, -45.0, "Open Tropical Atlantic"),
 ]
 
+# Google WeatherNext (Google DeepMind's AI model, GraphCast-based) is
+# listed first and checked most closely -- it's a genuinely strong,
+# modern data source and per instruction gets emphasis over the older
+# physics-based ensembles, not just a passing mention.
 ENSEMBLE_MODELS = {
+    "google_ai": ("google_weathernext2_ensemble", "Google WeatherNext AI Ensemble"),
     "gefs": ("gfs_seamless", "GEFS (GFS Ensemble)"),
     "ecmwf_ens": ("ecmwf_ifs025_ensemble", "ECMWF Ensemble"),
-    "google_ai": ("google_weathernext2_ensemble", "Google WeatherNext AI Ensemble"),
 }
 
 DISTURBANCE_THRESHOLD_MB = 1008  # rough threshold suggesting a developing low
 GENESIS_CHECK_HOURS = (24, 72, 120)
+
+# A handful of members dipping below the pressure threshold by chance is
+# normal background noise, not a real signal -- only count it as a
+# genuine "finding" once a meaningful share of the ensemble agrees.
+# Adjust this to make the system more or less sensitive.
+MIN_ENSEMBLE_AGREEMENT_PCT = 15
+
+# Google WeatherNext gets a longer look (its full ~15-day range) since
+# it's the priority model here; the older ensembles stay at the
+# standard 6-day check.
+GOOGLE_AI_FORECAST_DAYS = 10
+DEFAULT_ENSEMBLE_FORECAST_DAYS = 6
 
 
 def fetch_ensemble_genesis_signal(model_key):
@@ -456,8 +472,13 @@ def fetch_ensemble_genesis_signal(model_key):
     how many ensemble members show a developing low (pressure below the
     disturbance threshold) at several forecast hours -- a rough,
     practical stand-in for full genesis-probability tracking, using only
-    free, no-key data."""
+    free, no-key data. Only counts it as a real 'finding' once at least
+    MIN_ENSEMBLE_AGREEMENT_PCT of members agree -- a couple of members
+    dipping below the threshold by chance is normal noise, not signal.
+    Google WeatherNext gets a longer forecast window since it's the
+    priority model here, per instruction."""
     model_param, model_name = ENSEMBLE_MODELS[model_key]
+    forecast_days = GOOGLE_AI_FORECAST_DAYS if model_key == "google_ai" else DEFAULT_ENSEMBLE_FORECAST_DAYS
     findings = []
 
     for lat, lon, region in ENSEMBLE_CHECK_POINTS:
@@ -465,7 +486,7 @@ def fetch_ensemble_genesis_signal(model_key):
         url = (
             f"https://ensemble-api.open-meteo.com/v1/ensemble"
             f"?latitude={lat}&longitude={lon}&hourly=pressure_msl"
-            f"&models={model_param}&forecast_days=6&_cb={cache_buster}"
+            f"&models={model_param}&forecast_days={forecast_days}&_cb={cache_buster}"
         )
         data = _fetch_with_retries_bytes(url, f"Ensemble:{model_key}:{region}")
         if not data:
@@ -493,7 +514,7 @@ def fetch_ensemble_genesis_signal(model_key):
             if total == 0:
                 continue
             pct = round(100 * below_threshold / total)
-            if pct > 0:
+            if pct >= MIN_ENSEMBLE_AGREEMENT_PCT:
                 findings.append({"region": region, "fh": fh, "pct": pct, "members": total})
 
     if not findings:
@@ -579,24 +600,30 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
     beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
     lines = ["Tropical Watch -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
     lines.append("MAIN MODELS")
-    is_interesting = False
     for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
         if scan and scan.get("results"):
             best = min(scan["results"], key=lambda r: r["mslp_mb"])
             region = classify_region(best["lat"], best["lon"])
             wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
             lines.append(f"- {label}: lowest {best['mslp_mb']} mb near {region} by hour {best['fh']}{wind_str}")
-            if best["mslp_mb"] < INTERESTING_MSLP_THRESHOLD_MB:
-                is_interesting = True
         else:
             lines.append(f"- {label}: data unavailable this cycle")
+    # A single deterministic run dipping below the threshold somewhere
+    # across a wide multi-day grid is normal background noise on its
+    # own -- "interesting" is driven by genuine ensemble agreement or an
+    # explicit NHC formation percentage instead, not raw MSLP alone.
+    is_interesting = False
     lines.append("")
     lines.append("SIDE NOTES")
     for model_key, signal in ensemble_signals.items():
         _, model_name = ENSEMBLE_MODELS[model_key]
         if signal and signal.get("findings"):
-            top = max(signal["findings"], key=lambda f: f["pct"])
-            lines.append(f"- {model_name}: {top['pct']}% of members show a developing low near {top['region']} by hour {top['fh']}")
+            if model_key == "google_ai":
+                for f in signal["findings"]:
+                    lines.append(f"- {model_name}: {f['pct']}% of members show a developing low near {f['region']} by hour {f['fh']}")
+            else:
+                top = max(signal["findings"], key=lambda f: f["pct"])
+                lines.append(f"- {model_name}: {top['pct']}% of members show a developing low near {top['region']} by hour {top['fh']}")
             is_interesting = True
         else:
             lines.append(f"- {model_name}: no signal above threshold")
