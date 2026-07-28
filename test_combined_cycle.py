@@ -15,6 +15,10 @@ print("Fetching Euro...")
 ecmwf_scan = w.fetch_model_grid("ecmwf")
 print("Euro result:", "OK" if ecmwf_scan else "FAILED/EMPTY")
 
+print("Fetching AIFS...")
+aifs_scan = w.fetch_model_grid("ecmwf", models_param="ecmwf_aifs025_single", label="OpenMeteo:AIFS")
+print("AIFS result:", "OK" if aifs_scan else "FAILED/EMPTY")
+
 ensemble_signals = {}
 for model_key in w.ENSEMBLE_MODELS:
     print(f"Fetching ensemble: {model_key}...")
@@ -26,7 +30,7 @@ nhc_summary = w.fetch_nhc_outlook_summary()
 print("NHC summary:", nhc_summary)
 
 cycle_hour_utc = int(w.current_cycle_key().split("T")[1])
-message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary)
+message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary)
 print()
 print("=== FULL MESSAGE ===")
 print(message)
