@@ -603,6 +603,17 @@ def process_ensemble_genesis(model_key, state):
 INTERESTING_MSLP_THRESHOLD_MB = DISTURBANCE_THRESHOLD_MB
 
 
+def tier_label(pct):
+    """Turns a raw ensemble-agreement percentage into a plain-language
+    chance tier, matching how NHC talks about formation odds (low/
+    medium/high). Thresholds are easy to adjust."""
+    if pct >= 50:
+        return "High chance"
+    if pct >= 25:
+        return "Medium chance"
+    return "Low chance"
+
+
 def current_cycle_key():
     now_utc = datetime.now(timezone.utc)
     effective_time = now_utc - timedelta(hours=6)
