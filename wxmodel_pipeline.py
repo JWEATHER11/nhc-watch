@@ -706,6 +706,65 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     return "\n".join(lines)
 
 
+# Representative coastal/near-coastal points across the Gulf Coast
+# states, per instruction -- used to flag heavy rainfall potential
+# specifically for TX, LA, MS, AL, and FL.
+GULF_COAST_RAIN_POINTS = [
+    (29.76, -95.37, "Houston, TX"),
+    (30.08, -94.10, "Beaumont, TX"),
+    (27.80, -97.40, "Corpus Christi, TX"),
+    (29.95, -90.07, "New Orleans, LA"),
+    (30.45, -91.19, "Baton Rouge, LA"),
+    (30.69, -88.04, "Mobile, AL"),
+    (30.42, -87.22, "Pensacola, FL"),
+    (27.95, -82.46, "Tampa, FL"),
+    (25.76, -80.19, "Miami, FL"),
+]
+
+# Total forecast rainfall at or above this is flagged as notable, per
+# instruction. Easy to adjust.
+HEAVY_RAIN_THRESHOLD_INCHES = 4.0
+
+
+def fetch_gulf_coast_rainfall():
+    """Checks total forecast rainfall (GFS) at representative Gulf Coast
+    points, flagging any that show notably heavy totals -- per
+    instruction, watching specifically for Texas, Louisiana, and the
+    rest of the Gulf Coast through Florida."""
+    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
+    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/gfs"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=precipitation_sum&forecast_days=10&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:GFS")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list):
+        return None
+
+    flagged = []
+    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
+        try:
+            totals_mm = point["daily"]["precipitation_sum"]
+        except (KeyError, TypeError):
+            continue
+        total_in = sum(v for v in totals_mm if v is not None) / 25.4
+        if total_in >= HEAVY_RAIN_THRESHOLD_INCHES:
+            flagged.append({"place": place_name, "total_in": round(total_in, 1)})
+
+    if not flagged:
+        return None
+    flagged.sort(key=lambda f: -f["total_in"])
+    return flagged
+
+
 def process_combined_cycle(state):
     cycle_key = current_cycle_key()
     if state.get("last_combined_cycle") == cycle_key:
