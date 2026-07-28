@@ -702,14 +702,8 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     if rainfall_flags:
         lines.append("")
         lines.append("GULF COAST RAINFALL WATCH (next 10 days)")
-        for f in rainfall_flags:
-            parts = []
-            if f["gfs_in"] is not None:
-                parts.append(f"GFS shows {f['gfs_in']}\"")
-            if f["ecmwf_in"] is not None:
-                parts.append(f"Euro shows {f['ecmwf_in']}\"")
-            detail = ", ".join(parts) if parts else "model data unavailable"
-            lines.append(f"- {f['place']}: {detail}")
+        for model_name, r in rainfall_flags.items():
+            lines.append(f"- {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
         # Heavy rain by itself (even multi-model) is routine Gulf Coast
         # summer weather, not necessarily tropical -- it stays as
         # useful information here but does NOT alone flip the summary
