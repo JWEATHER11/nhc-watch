@@ -698,6 +698,14 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     lines.append(f"- NHC: {nhc_line}")
     if nhc_summary and "percent" in nhc_summary:
         is_interesting = True
+
+    if rainfall_flags:
+        lines.append("")
+        lines.append("GULF COAST RAINFALL WATCH")
+        for f in rainfall_flags:
+            lines.append(f"- {f['place']}: {f['total_in']}\" forecast total (next 10 days)")
+        is_interesting = True
+
     lines.append("")
     if is_interesting:
         lines.append("Summary: Signals of possible tropical development noted above -- worth watching closely.")
