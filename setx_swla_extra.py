@@ -369,3 +369,177 @@ def build_trending_message(cycle_hour_utc, history):
         return f"Trending ({cycle_hour_utc:02d}Z): No significant change from previous runs."
 
     return f"Trending ({cycle_hour_utc:02d}Z):\n" + "\n".join(notes)
+
+
+# --- Extra local conditions (temp/moisture/wind/timing/confidence) --
+# Builds on the existing SETX/SWLA section -- per instruction, only
+# included when the data actually adds value, not forced every time.
+
+CITY_POINTS = {
+    "Beaumont/Port Arthur": (29.99, -94.02),  # midpoint of the two
+    "Houston": (29.76, -95.37),
+    "Lake Charles": (30.23, -93.22),
+}
+
+MEANINGFUL_TEMP_DIFF_F = 4.0
+
+
+def fetch_conditions_detail():
+    """Highs/lows, heat index, dewpoint trend, wind, rain timing, and a
+    simple pattern one-liner -- from Euro, for the local area."""
+    lat_str = ",".join(str(p[0]) for p in CITY_POINTS.values())
+    lon_str = ",".join(str(p[1]) for p in CITY_POINTS.values())
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/ecmwf"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&hourly=temperature_2m,apparent_temperature,dewpoint_2m,wind_speed_10m,wind_direction_10m,precipitation"
+        f"&daily=temperature_2m_max,temperature_2m_min"
+        f"&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&_cb={cache_buster}"
+    )
+    data = w._fetch_with_retries_bytes(url, "ConditionsDetail:ecmwf")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list) or len(points) < 3:
+        return None
+
+    names = list(CITY_POINTS.keys())
+    by_city = dict(zip(names, points))
+    bpt = by_city["Beaumont/Port Arthur"]
+
+    daily = bpt.get("daily", {})
+    highs = daily.get("temperature_2m_max", [])
+    lows = daily.get("temperature_2m_min", [])
+    today_high = highs[0] if highs else None
+    today_low = lows[0] if lows else None
+
+    diff_notes = []
+    for city in ("Houston", "Lake Charles"):
+        other_daily = by_city[city].get("daily", {})
+        other_highs = other_daily.get("temperature_2m_max", [])
+        if today_high is not None and other_highs and other_highs[0] is not None:
+            diff = other_highs[0] - today_high
+            if abs(diff) >= MEANINGFUL_TEMP_DIFF_F:
+                warmer_cooler = "warmer" if diff > 0 else "cooler"
+                diff_notes.append(f"{city} looks {abs(round(diff))}F {warmer_cooler}")
+
+    hourly = bpt.get("hourly", {})
+    apparent = [v for v in hourly.get("apparent_temperature", [])[:24] if v is not None]
+    actual_temp = [v for v in hourly.get("temperature_2m", [])[:24] if v is not None]
+    max_heat_index = None
+    if apparent and actual_temp:
+        peak_idx = actual_temp.index(max(actual_temp))
+        if peak_idx < len(apparent) and apparent[peak_idx] - actual_temp[peak_idx] >= 5:
+            max_heat_index = round(apparent[peak_idx])
+
+    dp = [v for v in hourly.get("dewpoint_2m", []) if v is not None]
+    dewpoint_trend = "steady"
+    if len(dp) >= 48:
+        first_day_avg = sum(dp[:24]) / 24
+        second_day_avg = sum(dp[24:48]) / 24
+        if first_day_avg - second_day_avg >= 8:
+            dewpoint_trend = "dropping sharply"
+        elif first_day_avg - second_day_avg >= 3:
+            dewpoint_trend = "dropping"
+        elif second_day_avg - first_day_avg >= 3:
+            dewpoint_trend = "rising"
+
+    wspd = [v for v in hourly.get("wind_speed_10m", [])[:24] if v is not None]
+    wdir = [v for v in hourly.get("wind_direction_10m", [])[:24] if v is not None]
+    wind_note = None
+    if wspd and wdir:
+        avg_speed = round(sum(wspd) / len(wspd))
+        avg_dir = sum(wdir) / len(wdir)
+        dir_label = _deg_to_compass(avg_dir)
+        wind_note = f"{dir_label} around {avg_speed} mph"
+
+    precip = hourly.get("precipitation", [])[:48]
+    rain_timing = _describe_rain_timing(precip)
+
+    return {
+        "today_high_f": round(today_high) if today_high is not None else None,
+        "today_low_f": round(today_low) if today_low is not None else None,
+        "diff_notes": diff_notes,
+        "heat_index_f": max_heat_index,
+        "dewpoint_trend": dewpoint_trend,
+        "wind_note": wind_note,
+        "rain_timing": rain_timing,
+    }
+
+
+def _deg_to_compass(deg):
+    dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    idx = round(deg / 45) % 8
+    return dirs[idx]
+
+
+def _describe_rain_timing(precip_48h):
+    if not precip_48h or all(v is None or v == 0 for v in precip_48h):
+        return None
+    morning = sum(v for v in precip_48h[6:12] if v is not None)
+    afternoon = sum(v for v in precip_48h[12:18] if v is not None)
+    evening = sum(v for v in precip_48h[18:24] if v is not None)
+    overnight = sum(v for v in precip_48h[0:6] if v is not None) + sum(v for v in precip_48h[24:30] if v is not None)
+    buckets = {"morning": morning, "afternoon": afternoon, "evening": evening, "overnight": overnight}
+    total = sum(buckets.values())
+    if total <= 0:
+        return None
+    best = max(buckets, key=lambda k: buckets[k])
+    if buckets[best] / total >= 0.5:
+        return f"mainly {best}"
+    return "on and off through the day"
+
+
+def build_pattern_oneliner(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan):
+    """A short pattern description, only when there's a clear signal."""
+    if front_signal and front_signal.get("front_signal"):
+        return "Front approaching"
+    lowest_mb = None
+    for scan in (gfs_scan, ecmwf_scan):
+        if scan and scan.get("results"):
+            best = min(scan["results"], key=lambda r: r["mslp_mb"])
+            if lowest_mb is None or best["mslp_mb"] < lowest_mb:
+                lowest_mb = best["mslp_mb"]
+    if lowest_mb is not None and lowest_mb < 1005:
+        return "Deep tropical moisture nearby"
+    if setx_swla_outlook:
+        cov = setx_swla_outlook.get("coverage_pct")
+        if cov is not None and cov <= 10:
+            return "Ridge in control -- quiet and dry"
+        if cov is not None and cov >= 40:
+            return "Unsettled pattern -- rain chances each day"
+    return None
+
+
+def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan):
+    if not details:
+        return []
+    lines = []
+    if details["today_high_f"] is not None or details["today_low_f"] is not None:
+        hi = f"{details['today_high_f']}F" if details["today_high_f"] is not None else "n/a"
+        lo = f"{details['today_low_f']}F" if details["today_low_f"] is not None else "n/a"
+        extra = f" ({'; '.join(details['diff_notes'])})" if details["diff_notes"] else ""
+        lines.append(f"- Beaumont/Port Arthur: high {hi}, low {lo}{extra}")
+    if details["heat_index_f"] is not None:
+        lines.append(f"- Heat index up to {details['heat_index_f']}F today")
+    if details["dewpoint_trend"] != "steady":
+        lines.append(f"- Dewpoints {details['dewpoint_trend']}")
+    if details["wind_note"]:
+        lines.append(f"- Wind: {details['wind_note']}")
+    if details["rain_timing"]:
+        lines.append(f"- Rain timing: {details['rain_timing']}")
+    if setx_swla_outlook and setx_swla_outlook.get("coverage_pct") is not None:
+        cov = setx_swla_outlook["coverage_pct"]
+        lines.append(f"- Chance of measurable rain: ~{cov}%")
+        if setx_swla_outlook.get("heavy_potential"):
+            lines.append("- Chance of 1\"+ in spots: elevated given current signal")
+        conf = "high" if cov >= 60 or cov <= 10 else ("moderate" if cov >= 30 else "low")
+        lines.append(f"- Confidence on main rain period: {conf}")
+    pattern = build_pattern_oneliner(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
+    if pattern:
+        lines.append(f"- Pattern: {pattern}")
+    return lines
