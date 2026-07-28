@@ -616,7 +616,7 @@ def tier_label(pct):
 
 def current_cycle_key():
     now_utc = datetime.now(timezone.utc)
-    effective_time = now_utc - timedelta(hours=4)
+    effective_time = now_utc - timedelta(hours=5)
     cycle_hour = (effective_time.hour // 6) * 6
     cycle_date = effective_time.strftime("%Y-%m-%d")
     return f"{cycle_date}T{cycle_hour:02d}"
@@ -649,8 +649,6 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
     lines = ["Tropical Watch -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
-    lines.append("Expect updates roughly: 00Z ~5-8AM, 06Z ~11AM-2PM, 12Z ~5-8PM, 18Z ~11PM-2AM (Beaumont time)")
-    lines.append("")
     lines.append("MAIN MODELS")
     for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
         if scan and scan.get("results"):
