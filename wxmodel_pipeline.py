@@ -902,7 +902,7 @@ def process_combined_cycle(state):
     try:
         snapshot = _sx.build_trend_snapshot(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
         history = state.get(_sx.TREND_HISTORY_KEY, [])
-        history = [snapshot] + history[:2]
+        history = [snapshot] + history[:3]  # up to 4 runs total, per instruction
         trend_message = _sx.build_trending_message(cycle_hour_utc, history)
         deliver(trend_message)
         state[_sx.TREND_HISTORY_KEY] = history
