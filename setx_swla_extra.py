@@ -964,3 +964,113 @@ def fetch_temperature_buckets():
         "temp_7_10_f": bucket_avg(7, 10),
         "avg_dewpoint_f": avg_dewpoint,
     }
+
+
+# --- Dense HRRR grid for the local corridor -------------------------
+# A real grid (not just 5 city points) spanning Houston-Beaumont-Port
+# Arthur-Jasper-Lake Charles, per instruction -- gives both a genuine
+# broad-scale (average) total AND the isolated higher-end potential
+# that a sparse set of city points would miss. HRRR is ~3km resolution
+# so this is a meaningful improvement in what we can actually see.
+
+# Bounding box roughly covering the corridor, with a bit of margin.
+HRRR_GRID_LAT_MIN = 29.55
+HRRR_GRID_LAT_MAX = 30.75
+HRRR_GRID_LON_MIN = -95.55
+HRRR_GRID_LON_MAX = -93.10
+HRRR_GRID_ROWS = 5
+HRRR_GRID_COLS = 5
+
+
+def _hrrr_grid_points():
+    lat_step = (HRRR_GRID_LAT_MAX - HRRR_GRID_LAT_MIN) / (HRRR_GRID_ROWS - 1)
+    lon_step = (HRRR_GRID_LON_MAX - HRRR_GRID_LON_MIN) / (HRRR_GRID_COLS - 1)
+    points = []
+    for r in range(HRRR_GRID_ROWS):
+        for c in range(HRRR_GRID_COLS):
+            lat = round(HRRR_GRID_LAT_MIN + r * lat_step, 3)
+            lon = round(HRRR_GRID_LON_MIN + c * lon_step, 3)
+            points.append((lat, lon))
+    return points
+
+
+def _nearest_city_label(lat, lon):
+    """Rough plain-language location for a grid point, so 'isolated
+    higher totals' can be described relative to a place name instead of
+    raw coordinates."""
+    best_name, best_dist = None, None
+    for name, coords in {**CITY_POINTS, "Jasper": (30.68, -93.99), "Lake Charles": (30.23, -93.22)}.items():
+        city_lat, city_lon = coords
+        dist = ((lat - city_lat) ** 2 + (lon - city_lon) ** 2) ** 0.5
+        if best_dist is None or dist < best_dist:
+            best_dist, best_name = dist, name
+    return best_name
+
+
+def fetch_hrrr_grid_detail():
+    """HRRR (today + tomorrow, its real range) across a dense
+    {HRRR_GRID_ROWS}x{HRRR_GRID_COLS} grid over the corridor. Returns
+    both the broad-scale average total and the single highest total
+    found anywhere in the grid (the 'isolated higher area' signal),
+    with an approximate nearby place name."""
+    grid_points = _hrrr_grid_points()
+    lat_str = ",".join(str(p[0]) for p in grid_points)
+    lon_str = ",".join(str(p[1]) for p in grid_points)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=precipitation_sum&models=ncep_hrrr_conus"
+        f"&forecast_days=2&_cb={cache_buster}"
+    )
+    data = w._fetch_with_retries_bytes(url, "HRRRGrid")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list) or len(points) != len(grid_points):
+        return None
+
+    totals_in = []
+    max_total = 0.0
+    max_coords = None
+    hit_count = 0
+    for point, (glat, glon) in zip(points, grid_points):
+        daily_mm = point.get("daily", {}).get("precipitation_sum", [])
+        days = [v for v in daily_mm[:2] if v is not None]
+        if not days:
+            continue
+        total_in = sum(days) / 25.4
+        totals_in.append(total_in)
+        if total_in >= 2.5:
+            hit_count += 1
+        if total_in > max_total:
+            max_total = total_in
+            max_coords = (glat, glon)
+
+    if not totals_in:
+        return None
+
+    avg_total = round(sum(totals_in) / len(totals_in), 1)
+    coverage_pct = round(100 * hit_count / len(totals_in))
+    max_label = _nearest_city_label(*max_coords) if max_coords else None
+
+    return {
+        "avg_total_in": avg_total,
+        "max_total_in": round(max_total, 1),
+        "max_near": max_label,
+        "coverage_pct": coverage_pct,
+        "coverage_word": _coverage_word(coverage_pct),
+    }
+
+
+def build_hrrr_grid_note(detail):
+    if not detail:
+        return None
+    lines = [f"- HRRR grid (today + tomorrow): broad-scale ~{detail['avg_total_in']}\" average across the corridor, {_coverage_label(detail['coverage_pct'])}"]
+    if detail["max_total_in"] > detail["avg_total_in"] + 0.3:
+        near = f" near {detail['max_near']}" if detail["max_near"] else ""
+        lines.append(f"- Isolated higher totals possible: up to {detail['max_total_in']}\"{near} in the HRRR grid")
+    return lines
