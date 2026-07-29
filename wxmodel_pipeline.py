@@ -32,8 +32,8 @@ from zoneinfo import ZoneInfo
 CURRENT_STORMS_URL = "https://www.nhc.noaa.gov/CurrentStorms.json"
 ATCF_BASE = "https://ftp.nhc.noaa.gov/atcf/aid_public"
 STATE_FILE = "wxmodel_state.json"
-MAX_ATTEMPTS = 3
-RETRY_DELAY_SEC = 5
+MAX_ATTEMPTS = 2  # reduced from 3 -- per instruction, speed is critical
+RETRY_DELAY_SEC = 2  # reduced from 5
 BEAUMONT_TZ = ZoneInfo("America/Chicago")
 
 # TECH codes we care about, with display names.
@@ -48,7 +48,7 @@ MODELS_OF_INTEREST = {
 }
 
 
-def _http_get_bytes(url, timeout=20):
+def _http_get_bytes(url, timeout=10):  # reduced from 20 -- per instruction, speed is critical
     req = urllib.request.Request(url, headers={"User-Agent": "wxmodel-pipeline/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
