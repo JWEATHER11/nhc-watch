@@ -751,7 +751,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         lines.append("<b>Summary:</b> Quiet. No significant tropical signals detected this cycle.")
 
     lines.append("")
-    lines.append("Expect updates roughly: 00Z ~12AM, 06Z ~6AM, 12Z ~12PM, 18Z ~6PM (Beaumont time)")
+    lines.append("Expect updates roughly: 00Z ~2AM, 06Z ~8AM, 12Z ~2PM, 18Z ~8PM (Beaumont time)")
 
     return "\n".join(lines)
 
