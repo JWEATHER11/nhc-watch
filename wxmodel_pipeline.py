@@ -616,7 +616,14 @@ def tier_label(pct):
 
 def current_cycle_key():
     now_utc = datetime.now(timezone.utc)
-    effective_time = now_utc - timedelta(hours=6)  # matches Euro's real-world ~6h publication delay
+    # GFS is typically ready ~5h after each cycle, but Euro (the
+    # bottleneck) genuinely runs ~6.5-7h per multiple independent
+    # real-world sources (wethr.net, WeatherBell-style model schedules)
+    # -- confirmed directly against the user's own observation (12Z
+    # cycle not fully ready until ~1-2 PM CDT = 18-19Z). Using 7h here
+    # so both models are genuinely available before labeling a cycle
+    # ready, not just guessing.
+    effective_time = now_utc - timedelta(hours=7)
     cycle_hour = (effective_time.hour // 6) * 6
     cycle_date = effective_time.strftime("%Y-%m-%d")
     return f"{cycle_date}T{cycle_hour:02d}"
