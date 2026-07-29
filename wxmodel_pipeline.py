@@ -644,11 +644,44 @@ def fetch_nhc_outlook_summary():
     return "; ".join(mentions[:6])
 
 
-def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None):
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None, line_signal=None, temp_gradient=None, ndfd_changed=True):
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
-    beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
-    lines = ["<b>Tropical Watch</b> -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
+    beaumont_str = cycle_local.strftime("%b %-d %I:%M %p").replace(" 0", " ")
+    lines = ["<b>Model Watch</b> -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
+
+    is_interesting = False
+
+    lines.append("<b>SETX/SWLA LOCAL RAINFALL OUTLOOK</b> (Houston to Lake Charles)")
+    import setx_swla_extra as _sx2
+    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
+    try:
+        conditions_detail = _sx2.fetch_conditions_detail()
+        conditions_lines = _sx2.build_conditions_section(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
+        if conditions_lines:
+            lines.extend(conditions_lines)
+    except Exception as e:
+        print(f"[Combined cycle] Conditions detail unavailable (non-fatal): {e}")
+    if line_signal:
+        note = _sx2.build_organized_line_note(line_signal)
+        if note:
+            lines.append(f"- {note}")
+    if temp_gradient:
+        note = _sx2.build_temperature_gradient_note(temp_gradient)
+        if note:
+            lines.append(f"- {note}")
+    front_lines = _sx2.build_front_signal_section(front_signal)
+    if front_lines:
+        lines.append("")
+        lines.extend(front_lines)
+
+    if rainfall_flags:
+        lines.append("")
+        lines.append("<b>GULF COAST RAINFALL WATCH</b> (next 10 days)")
+        for model_name, r in rainfall_flags.items():
+            lines.append(f"- {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
+
+    lines.append("")
     lines.append("<b>MAIN MODELS</b>")
     for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
         if scan and scan.get("results"):
@@ -656,13 +689,11 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
             region = classify_region(best["lat"], best["lon"])
             wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
             lines.append(f"- {label}: lowest {best['mslp_mb']} mb near {region} by hour {best['fh']}{wind_str}")
+            if best["mslp_mb"] < INTERESTING_MSLP_THRESHOLD_MB:
+                is_interesting = True
         else:
             lines.append(f"- {label}: data unavailable this cycle")
-    # A single deterministic run dipping below the threshold somewhere
-    # across a wide multi-day grid is normal background noise on its
-    # own -- "interesting" is driven by genuine ensemble agreement or an
-    # explicit NHC formation percentage instead, not raw MSLP alone.
-    is_interesting = False
+
     lines.append("")
     lines.append("<b>SIDE NOTES</b>")
     if aifs_scan and aifs_scan.get("results"):
@@ -681,10 +712,6 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
             else:
                 top = max(signal["findings"], key=lambda f: f["pct"])
                 lines.append(f"- {model_name}: {tier_label(top['pct'])} ({top['pct']}%) of members show a developing low near {top['region']} by hour {top['fh']}")
-            # Track split -- if this model's findings span more than one
-            # region, spell out the percentage breakdown explicitly so
-            # it reads like real track guidance (Gulf X%, Caribbean Y%,
-            # Atlantic Z%), not just a single number.
             by_region = {}
             for f in signal["findings"]:
                 by_region[f["region"]] = max(by_region.get(f["region"], 0), f["pct"])
@@ -699,35 +726,12 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     if nhc_summary and "percent" in nhc_summary:
         is_interesting = True
 
-    if rainfall_flags:
-        lines.append("")
-        lines.append("<b>GULF COAST RAINFALL WATCH</b> (next 10 days)")
-        for model_name, r in rainfall_flags.items():
-            lines.append(f"- {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
-
-    lines.append("")
-    lines.append("<b>SETX/SWLA OUTLOOK</b> (Houston to Lake Charles)")
-    import setx_swla_extra as _sx2
-    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
-    try:
-        conditions_detail = _sx2.fetch_conditions_detail()
-        conditions_lines = _sx2.build_conditions_section(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
-        if conditions_lines:
-            lines.extend(conditions_lines)
-    except Exception as e:
-        print(f"[Combined cycle] Conditions detail unavailable (non-fatal): {e}")
-    front_lines = _sx2.build_front_signal_section(front_signal)
-    if front_lines:
-        lines.append("")
-        lines.extend(front_lines)
     if ndfd_summary:
         lines.append("")
-        lines.append("NWS comparison (brief): " + "; ".join(ndfd_summary))
-        # Heavy rain by itself (even multi-model) is routine Gulf Coast
-        # summer weather, not necessarily tropical -- it stays as
-        # useful information here but does NOT alone flip the summary
-        # into 'tropical development' language. Only genuine ensemble
-        # agreement or an explicit NHC mention does that.
+        if ndfd_changed:
+            lines.append("<b>NWS comparison</b> (brief): " + "; ".join(ndfd_summary))
+        else:
+            lines.append("<b>NWS comparison</b>: No significant change from NWS Houston / Lake Charles.")
 
     lines.append("")
     if is_interesting:
@@ -739,183 +743,6 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     lines.append("Expect updates roughly: 00Z ~12AM, 06Z ~6AM, 12Z ~12PM, 18Z ~6PM (Beaumont time)")
 
     return "\n".join(lines)
-
-
-# Representative coastal/near-coastal points across the Gulf Coast
-# states, per instruction -- used to flag heavy rainfall potential
-# specifically for TX, LA, MS, AL, and FL.
-GULF_COAST_RAIN_POINTS = [
-    (29.76, -95.37, "Houston, TX"),
-    (30.08, -94.10, "Beaumont, TX"),
-    (27.80, -97.40, "Corpus Christi, TX"),
-    (29.95, -90.07, "New Orleans, LA"),
-    (30.45, -91.19, "Baton Rouge, LA"),
-    (30.69, -88.04, "Mobile, AL"),
-    (30.42, -87.22, "Pensacola, FL"),
-    (27.95, -82.46, "Tampa, FL"),
-    (25.76, -80.19, "Miami, FL"),
-]
-
-# Total forecast rainfall at or above this is flagged as notable, per
-# instruction. Easy to adjust.
-HEAVY_RAIN_THRESHOLD_INCHES = 1.0
-
-
-def _fetch_rainfall_totals(endpoint):
-    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
-    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
-    cache_buster = int(time.time())
-    url = (
-        f"https://api.open-meteo.com/v1/{endpoint}"
-        f"?latitude={lat_str}&longitude={lon_str}"
-        f"&daily=precipitation_sum&forecast_days=10&_cb={cache_buster}"
-    )
-    data = _fetch_with_retries_bytes(url, f"GulfCoastRainfall:{endpoint}")
-    if not data:
-        return {}
-    try:
-        points = json.loads(data.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return {}
-    if not isinstance(points, list):
-        return {}
-    totals = {}
-    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
-        try:
-            totals_mm = point["daily"]["precipitation_sum"]
-        except (KeyError, TypeError):
-            continue
-        total_in = sum(v for v in totals_mm if v is not None) / 25.4
-        totals[place_name] = round(total_in, 1)
-    return totals
-
-
-def _fetch_rainfall_totals_google_ai():
-    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
-    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
-    cache_buster = int(time.time())
-    url = (
-        f"https://ensemble-api.open-meteo.com/v1/ensemble"
-        f"?latitude={lat_str}&longitude={lon_str}"
-        f"&daily=precipitation_sum&models=google_weathernext2_ensemble"
-        f"&forecast_days=10&_cb={cache_buster}"
-    )
-    data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:google_ai")
-    if not data:
-        return {}
-    try:
-        points = json.loads(data.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return {}
-    if not isinstance(points, list):
-        return {}
-    totals = {}
-    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
-        daily = point.get("daily", {})
-        member_keys = [k for k in daily if k.startswith("precipitation_sum_member")]
-        if not member_keys:
-            continue
-        member_totals = []
-        for mk in member_keys:
-            vals = daily[mk]
-            member_totals.append(sum(v for v in vals if v is not None))
-        if member_totals:
-            avg_mm = sum(member_totals) / len(member_totals)
-            totals[place_name] = round(avg_mm / 25.4, 1)
-    return totals
-
-
-def fetch_gulf_coast_rainfall():
-    model_totals = {
-        "GFS": _fetch_rainfall_totals("gfs"),
-        "Euro": _fetch_rainfall_totals("ecmwf"),
-        "Google AI": _fetch_rainfall_totals_google_ai(),
-    }
-    results = {}
-    for model_name, totals in model_totals.items():
-        if not totals:
-            continue
-        heaviest_place = max(totals, key=lambda p: totals[p])
-        heaviest_val = totals[heaviest_place]
-        if heaviest_val >= HEAVY_RAIN_THRESHOLD_INCHES:
-            results[model_name] = {"place": heaviest_place, "total_in": heaviest_val}
-    if not results:
-        return None
-    return results
-
-
-SETX_SWLA_POINTS = [
-    (29.76, -95.37),
-    (30.08, -94.10),
-    (29.90, -93.94),
-    (30.23, -93.22),
-]
-
-TRAINING_STORM_HOURLY_THRESHOLD_IN = 1.0
-
-
-def fetch_setx_swla_rainfall_outlook():
-    lat_str = ",".join(str(p[0]) for p in SETX_SWLA_POINTS)
-    lon_str = ",".join(str(p[1]) for p in SETX_SWLA_POINTS)
-    cache_buster = int(time.time())
-    url = (
-        f"https://api.open-meteo.com/v1/gfs"
-        f"?latitude={lat_str}&longitude={lon_str}"
-        f"&daily=precipitation_sum&hourly=precipitation"
-        f"&forecast_days=10&_cb={cache_buster}"
-    )
-    data = _fetch_with_retries_bytes(url, "SETX_SWLA_Rainfall")
-    if not data:
-        return None
-    try:
-        points = json.loads(data.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return None
-    if not isinstance(points, list):
-        return None
-    short_range_totals = []
-    medium_long_totals = []
-    max_hourly_in = 0.0
-    for point in points:
-        daily_mm = point.get("daily", {}).get("precipitation_sum", [])
-        if daily_mm:
-            short_days = [v for v in daily_mm[:4] if v is not None]
-            long_days = [v for v in daily_mm[4:10] if v is not None]
-            if short_days:
-                short_range_totals.append(sum(short_days) / 25.4)
-            if long_days:
-                medium_long_totals.append(sum(long_days) / 25.4)
-        hourly_mm = point.get("hourly", {}).get("precipitation", [])
-        for v in hourly_mm:
-            if v is not None:
-                max_hourly_in = max(max_hourly_in, v / 25.4)
-    if not short_range_totals and not medium_long_totals:
-        return None
-    avg_short = round(sum(short_range_totals) / len(short_range_totals), 1) if short_range_totals else None
-    avg_long = round(sum(medium_long_totals) / len(medium_long_totals), 1) if medium_long_totals else None
-    heavy_potential = max_hourly_in >= TRAINING_STORM_HOURLY_THRESHOLD_IN
-    return {
-        "short_range_in": avg_short,
-        "medium_long_in": avg_long,
-        "max_hourly_in": round(max_hourly_in, 1),
-        "heavy_potential": heavy_potential,
-    }
-
-
-def build_setx_swla_section(outlook):
-    if not outlook:
-        return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
-    lines = []
-    if outlook["short_range_in"] is not None:
-        lines.append(f"- Today + next 3 days: around {outlook['short_range_in']}\" across the Houston-to-Lake Charles corridor")
-    if outlook["medium_long_in"] is not None:
-        lines.append(f"- Days 4-10 outlook: around {outlook['medium_long_in']}\" additional")
-    if outlook["heavy_potential"]:
-        lines.append(f"- Heavy rain potential: YES -- model shows up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor, watch for training storms/localized flooding")
-    else:
-        lines.append("- Heavy rain potential: nothing pointing to 1\"+/hr training storms right now")
-    return lines
-
 
 def process_combined_cycle(state):
     cycle_key = current_cycle_key()
