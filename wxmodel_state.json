@@ -2,6 +2,22 @@
   "quiet_announced_date": "2026-07-29",
   "trend_snapshots": [
     {
+      "short_rain_in": 0.1,
+      "medium_rain_in": 0.1,
+      "coverage_pct": 20,
+      "medium_coverage_pct": 0,
+      "long_coverage_pct": 80,
+      "temp_drop_f": 5.1,
+      "front_signal": false,
+      "short_temp_f": 94.0,
+      "medium_temp_f": 96.0,
+      "temp_5_7_f": 95.7,
+      "temp_7_10_f": 93.1,
+      "avg_dewpoint_f": 75.0,
+      "tropical_lowest_mb": 1006.8,
+      "tropical_wind_mph": 4
+    },
+    {
       "short_rain_in": 0,
       "medium_rain_in": 0,
       "coverage_pct": 0,
@@ -27,5 +43,6 @@
   ],
   "ndfd_send_day": "2026-07-29",
   "ndfd_send_count": 0,
-  "last_ndfd_totals": null
+  "last_ndfd_totals": null,
+  "last_combined_cycle": "2026-07-29T06"
 }
