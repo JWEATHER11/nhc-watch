@@ -744,6 +744,108 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
 
     return "\n".join(lines)
 
+# Representative coastal/near-coastal points across the Gulf Coast
+# states -- used to flag heavy rainfall potential specifically for TX,
+# LA, MS, AL, and FL. (Restored after an accidental deletion during an
+# earlier rewrite.)
+GULF_COAST_RAIN_POINTS = [
+    (29.76, -95.37, "Houston, TX"),
+    (30.08, -94.10, "Beaumont, TX"),
+    (27.80, -97.40, "Corpus Christi, TX"),
+    (29.95, -90.07, "New Orleans, LA"),
+    (30.45, -91.19, "Baton Rouge, LA"),
+    (30.69, -88.04, "Mobile, AL"),
+    (30.42, -87.22, "Pensacola, FL"),
+    (27.95, -82.46, "Tampa, FL"),
+    (25.76, -80.19, "Miami, FL"),
+]
+
+HEAVY_RAIN_THRESHOLD_INCHES = 1.0
+
+
+def _fetch_rainfall_totals(endpoint):
+    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
+    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/{endpoint}"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=precipitation_sum&forecast_days=10&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, f"GulfCoastRainfall:{endpoint}")
+    if not data:
+        return {}
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    if not isinstance(points, list):
+        return {}
+    totals = {}
+    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
+        try:
+            totals_mm = point["daily"]["precipitation_sum"]
+        except (KeyError, TypeError):
+            continue
+        total_in = sum(v for v in totals_mm if v is not None) / 25.4
+        totals[place_name] = round(total_in, 1)
+    return totals
+
+
+def _fetch_rainfall_totals_google_ai():
+    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
+    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
+    cache_buster = int(time.time())
+    url = (
+        f"https://ensemble-api.open-meteo.com/v1/ensemble"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=precipitation_sum&models=google_weathernext2_ensemble"
+        f"&forecast_days=10&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:google_ai")
+    if not data:
+        return {}
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    if not isinstance(points, list):
+        return {}
+    totals = {}
+    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
+        daily = point.get("daily", {})
+        member_keys = [k for k in daily if k.startswith("precipitation_sum_member")]
+        if not member_keys:
+            continue
+        member_totals = []
+        for mk in member_keys:
+            vals = daily[mk]
+            member_totals.append(sum(v for v in vals if v is not None))
+        if member_totals:
+            avg_mm = sum(member_totals) / len(member_totals)
+            totals[place_name] = round(avg_mm / 25.4, 1)
+    return totals
+
+
+def fetch_gulf_coast_rainfall():
+    model_totals = {
+        "GFS": _fetch_rainfall_totals("gfs"),
+        "Euro": _fetch_rainfall_totals("ecmwf"),
+        "Google AI": _fetch_rainfall_totals_google_ai(),
+    }
+    results = {}
+    for model_name, totals in model_totals.items():
+        if not totals:
+            continue
+        heaviest_place = max(totals, key=lambda p: totals[p])
+        heaviest_val = totals[heaviest_place]
+        if heaviest_val >= HEAVY_RAIN_THRESHOLD_INCHES:
+            results[model_name] = {"place": heaviest_place, "total_in": heaviest_val}
+    if not results:
+        return None
+    return results
+
+
 def process_combined_cycle(state):
     cycle_key = current_cycle_key()
     if state.get("last_combined_cycle") == cycle_key:
