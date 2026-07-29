@@ -610,3 +610,153 @@ def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan,
     if pattern:
         lines.append(f"- Pattern: {pattern}")
     return lines
+
+
+# --- Organized line / widespread linear coverage detection ----------
+# HRRR leads for short-term structure/timing, Euro as supporting
+# guidance into medium term, per instruction. Points are ordered
+# roughly west-to-east/north-to-south along the corridor so adjacent
+# simultaneous hits look like a line moving through, not just random
+# scattered hits.
+LINE_ORDER = ["Houston", "Beaumont", "Port Arthur", "Jasper", "Lake Charles"]
+LINE_POINT_COORDS = {
+    "Houston": (29.76, -95.37),
+    "Beaumont": (30.08, -94.10),
+    "Port Arthur": (29.90, -93.94),
+    "Jasper": (30.68, -93.99),
+    "Lake Charles": (30.23, -93.22),
+}
+LINE_RAIN_RATE_THRESHOLD_MM = 2.0  # per-hour, roughly 0.08in/hr
+LINE_MIN_ADJACENT_POINTS = 3
+
+
+def fetch_organized_line_signal():
+    """Checks HRRR (primary, short-term) and Euro (supporting,
+    extends further out) hourly precip at each ordered corridor point
+    for hours where several adjacent points hit meaningfully at the
+    same time -- a practical proxy for an organized line/broken line
+    moving through, versus isolated/scattered hits."""
+    lat_str = ",".join(str(LINE_POINT_COORDS[name][0]) for name in LINE_ORDER)
+    lon_str = ",".join(str(LINE_POINT_COORDS[name][1]) for name in LINE_ORDER)
+    cache_buster = int(time.time())
+
+    def fetch(endpoint, models_param=None, forecast_days=2):
+        models_bit = f"&models={models_param}" if models_param else ""
+        url = (
+            f"https://api.open-meteo.com/v1/{endpoint}"
+            f"?latitude={lat_str}&longitude={lon_str}"
+            f"&hourly=precipitation&forecast_days={forecast_days}{models_bit}&_cb={cache_buster}"
+        )
+        data = w._fetch_with_retries_bytes(url, f"LineSignal:{endpoint}:{models_param or 'auto'}")
+        if not data:
+            return None
+        try:
+            points = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        return points if isinstance(points, list) else None
+
+    def check_line(points, source_label):
+        if not points or len(points) != len(LINE_ORDER):
+            return None
+        hourly_series = [p.get("hourly", {}).get("precipitation", []) for p in points]
+        max_len = min(len(s) for s in hourly_series) if hourly_series else 0
+        best_adjacent = 0
+        for hour in range(max_len):
+            hits = [hourly_series[i][hour] is not None and hourly_series[i][hour] >= LINE_RAIN_RATE_THRESHOLD_MM for i in range(len(LINE_ORDER))]
+            # longest run of adjacent True values
+            run = 0
+            best_run = 0
+            for hit in hits:
+                run = run + 1 if hit else 0
+                best_run = max(best_run, run)
+            best_adjacent = max(best_adjacent, best_run)
+        if best_adjacent >= LINE_MIN_ADJACENT_POINTS:
+            structure = "solid line" if best_adjacent >= len(LINE_ORDER) - 1 else "broken line"
+            return {"source": source_label, "structure": structure, "adjacent_points": best_adjacent}
+        return None
+
+    hrrr_points = fetch("forecast", models_param="ncep_hrrr_conus", forecast_days=2)
+    euro_points = fetch("ecmwf", forecast_days=5)
+
+    hrrr_signal = check_line(hrrr_points, "HRRR")
+    euro_signal = check_line(euro_points, "Euro")
+
+    if not hrrr_signal and not euro_signal:
+        return None
+    return {"hrrr": hrrr_signal, "euro": euro_signal}
+
+
+def build_organized_line_note(signal):
+    if not signal:
+        return None
+    hrrr = signal.get("hrrr")
+    euro = signal.get("euro")
+    if hrrr:
+        note = f"{hrrr['structure'].capitalize()} of showers/storms showing up in HRRR moving through the Houston-Beaumont-Port Arthur-Jasper-Lake Charles corridor"
+        if euro:
+            note += " -- Euro supports this continuing into the next couple days"
+        return note
+    if euro:
+        return f"Euro shows a {euro['structure']} of showers/storms with wider coverage pushing across the corridor"
+    return None
+
+
+# --- Temperature gradient detection ----------------------------------
+GRADIENT_THRESHOLD_F = 10.0
+
+
+def fetch_temperature_gradient():
+    """Checks for a real north-south temperature contrast across the
+    corridor (Jasper representing the north end, Port Arthur/Lake
+    Charles the south end) using Euro -- only meaningful when the
+    spread is genuinely large, not just normal day-to-day variation."""
+    lat_str = ",".join(str(p[0]) for p in SETX_SWLA_POINTS)
+    lon_str = ",".join(str(p[1]) for p in SETX_SWLA_POINTS)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/ecmwf"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=temperature_2m_max,temperature_2m_min"
+        f"&forecast_days=3&temperature_unit=fahrenheit&_cb={cache_buster}"
+    )
+    data = w._fetch_with_retries_bytes(url, "TempGradient:ecmwf")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list) or len(points) < 5:
+        return None
+
+    # SETX_SWLA_POINTS order: Houston, Beaumont, Port Arthur, Jasper, Lake Charles
+    jasper = points[3]
+    south_points = [points[2], points[4]]  # Port Arthur, Lake Charles
+
+    jasper_highs = jasper.get("daily", {}).get("temperature_2m_max", [])
+    if not jasper_highs or jasper_highs[0] is None:
+        return None
+
+    south_highs = []
+    for p in south_points:
+        h = p.get("daily", {}).get("temperature_2m_max", [])
+        if h and h[0] is not None:
+            south_highs.append(h[0])
+    if not south_highs:
+        return None
+
+    avg_south_high = sum(south_highs) / len(south_highs)
+    gradient = avg_south_high - jasper_highs[0]
+
+    if abs(gradient) < GRADIENT_THRESHOLD_F:
+        return None
+    return {"gradient_f": round(abs(gradient), 1), "warmer_side": "south" if gradient > 0 else "north"}
+
+
+def build_temperature_gradient_note(gradient):
+    if not gradient:
+        return None
+    if gradient["warmer_side"] == "south":
+        return f"Strong temperature gradient setting up -- colder air to the north, warmer to the south, roughly {gradient['gradient_f']}F difference across the region"
+    return f"Sharp temperature contrast developing near the region, about {gradient['gradient_f']}F colder to the south side of the corridor"
