@@ -865,13 +865,27 @@ def process_combined_cycle(state):
     rainfall_flags = fetch_gulf_coast_rainfall()
     import setx_swla_extra as _sx
     setx_swla_outlook = _sx.fetch_setx_swla_rainfall_outlook()
-    ndfd_summary = _sx.fetch_ndfd_qpf_summary()
     front_signal = _sx.fetch_front_signal()
     line_signal = _sx.fetch_organized_line_signal()
     temp_gradient = _sx.fetch_temperature_gradient()
-    ndfd_changed = ndfd_summary != state.get("last_ndfd_summary")
-    if ndfd_summary:
-        state["last_ndfd_summary"] = ndfd_summary
+
+    # Strict NWS Houston/Lake Charles dedup, per instruction -- only
+    # send when something meaningfully changed, capped per day.
+    today_str = datetime.now(timezone.utc).astimezone(BEAUMONT_TZ).strftime("%Y-%m-%d")
+    if state.get("ndfd_send_day") != today_str:
+        state["ndfd_send_day"] = today_str
+        state["ndfd_send_count"] = 0
+    ndfd_totals = _sx.fetch_ndfd_qpf_totals()
+    should_send_ndfd, ndfd_summary, updated_ndfd_totals = _sx.describe_ndfd_change(
+        ndfd_totals, state.get("last_ndfd_totals"), state.get("ndfd_send_count", 0)
+    )
+    state["last_ndfd_totals"] = updated_ndfd_totals
+    if should_send_ndfd:
+        state["ndfd_send_count"] = state.get("ndfd_send_count", 0) + 1
+    ndfd_changed = should_send_ndfd
+    if not should_send_ndfd:
+        ndfd_summary = None
+
     cycle_hour_utc = int(cycle_key.split("T")[1])
     message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed)
     try:
