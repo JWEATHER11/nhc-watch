@@ -671,11 +671,19 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         print(f"[Combined cycle] HRRR grid detail unavailable (non-fatal): {e}")
     try:
         conditions_detail = _sx2.fetch_conditions_detail()
-        conditions_lines = _sx2.build_conditions_section(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
+        temp_blend = _sx2.fetch_temperature_blend()
+        conditions_lines = _sx2.build_conditions_section(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan, temp_blend)
         if conditions_lines:
             lines.extend(conditions_lines)
     except Exception as e:
         print(f"[Combined cycle] Conditions detail unavailable (non-fatal): {e}")
+    try:
+        seven_day = _sx2.fetch_seven_day_forecast()
+        seven_day_lines = _sx2.build_seven_day_section(seven_day)
+        if seven_day_lines:
+            lines.extend(seven_day_lines)
+    except Exception as e:
+        print(f"[Combined cycle] 7-day forecast unavailable (non-fatal): {e}")
     if line_signal:
         note = _sx2.build_organized_line_note(line_signal)
         if note:
