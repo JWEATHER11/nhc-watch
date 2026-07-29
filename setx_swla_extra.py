@@ -201,12 +201,31 @@ def _is_northerly(deg):
     return deg >= NORTHERLY_MIN_DEG or deg <= NORTHERLY_MAX_DEG
 
 
+DEWPOINT_DROP_THRESHOLD_F = 15.0
+TEMP_DROP_THRESHOLD_F = 8.0
+NORTHERLY_MIN_DEG = 315
+NORTHERLY_MAX_DEG = 45
+# A front should show up across MOST of the region, not just one
+# model blip at one point -- per instruction, requires at least this
+# fraction of the corridor points to agree before flagging anything.
+FRONT_AGREEMENT_FRACTION = 0.6
+
+
+def _c_to_f(c):
+    return c * 9 / 5 + 32
+
+
+def _is_northerly(deg):
+    return deg >= NORTHERLY_MIN_DEG or deg <= NORTHERLY_MAX_DEG
+
+
 def fetch_front_signal():
     """Checks Euro (primary) and GFS (cross-check) hourly dewpoint,
-    wind direction, and temperature across the SETX/SWLA corridor over
-    the next 4 days for a sharp dewpoint drop, a shift to northerly
-    winds, and/or a notable temperature drop -- plain signals that a
-    front is pushing in, not a full forecast discussion."""
+    wind direction, and temperature at EACH corridor point separately
+    (Beaumont/Port Arthur, Houston, Jasper, Lake Charles) over the next
+    4 days. Only flags a front/cooling signal when a real majority of
+    the points agree -- a single point showing a swing is normal model
+    noise, not a regional signal, per instruction."""
     lat_str = ",".join(str(p[0]) for p in SETX_SWLA_POINTS)
     lon_str = ",".join(str(p[1]) for p in SETX_SWLA_POINTS)
     cache_buster = int(time.time())
@@ -228,47 +247,57 @@ def fetch_front_signal():
         return points if isinstance(points, list) else None
 
     euro_points = fetch("ecmwf")
-    gfs_points = fetch("gfs")
-
-    dewpoint_drop = 0.0
-    temp_drop = 0.0
-    shift_to_north = False
-
-    for points in (euro_points, gfs_points):
-        if not points:
-            continue
-        for point in points:
-            hourly = point.get("hourly", {})
-            dp = [v for v in hourly.get("dewpoint_2m", []) if v is not None]
-            temp = [v for v in hourly.get("temperature_2m", []) if v is not None]
-            wdir = hourly.get("wind_direction_10m", [])
-
-            if len(dp) >= 25:
-                for i in range(len(dp) - 24):
-                    drop = dp[i] - dp[i + 24]
-                    dewpoint_drop = max(dewpoint_drop, drop)
-            if len(temp) >= 25:
-                for i in range(len(temp) - 24):
-                    drop = temp[i] - temp[i + 24]
-                    temp_drop = max(temp_drop, drop)
-            if wdir:
-                early = [d for d in wdir[:12] if d is not None]
-                later = [d for d in wdir[-24:] if d is not None]
-                if early and later:
-                    early_north = sum(1 for d in early if _is_northerly(d)) / len(early)
-                    later_north = sum(1 for d in later if _is_northerly(d)) / len(later)
-                    if later_north >= 0.5 and early_north < 0.3:
-                        shift_to_north = True
-
-    if euro_points is None and gfs_points is None:
+    if not euro_points:
         return None
 
+    n_points = len(euro_points)
+    dewpoint_drop_points = 0
+    temp_drop_points = 0
+    north_shift_points = 0
+    max_dewpoint_drop = 0.0
+    max_temp_drop = 0.0
+
+    for point in euro_points:
+        hourly = point.get("hourly", {})
+        dp = [v for v in hourly.get("dewpoint_2m", []) if v is not None]
+        temp = [v for v in hourly.get("temperature_2m", []) if v is not None]
+        wdir = hourly.get("wind_direction_10m", [])
+
+        point_dp_drop = 0.0
+        if len(dp) >= 25:
+            for i in range(len(dp) - 24):
+                point_dp_drop = max(point_dp_drop, dp[i] - dp[i + 24])
+        if point_dp_drop >= DEWPOINT_DROP_THRESHOLD_F:
+            dewpoint_drop_points += 1
+        max_dewpoint_drop = max(max_dewpoint_drop, point_dp_drop)
+
+        point_temp_drop = 0.0
+        if len(temp) >= 25:
+            for i in range(len(temp) - 24):
+                point_temp_drop = max(point_temp_drop, temp[i] - temp[i + 24])
+        if point_temp_drop >= TEMP_DROP_THRESHOLD_F:
+            temp_drop_points += 1
+        max_temp_drop = max(max_temp_drop, point_temp_drop)
+
+        if wdir:
+            early = [d for d in wdir[:12] if d is not None]
+            later = [d for d in wdir[-24:] if d is not None]
+            if early and later:
+                early_north = sum(1 for d in early if _is_northerly(d)) / len(early)
+                later_north = sum(1 for d in later if _is_northerly(d)) / len(later)
+                if later_north >= 0.5 and early_north < 0.3:
+                    north_shift_points += 1
+
+    dewpoint_widespread = (dewpoint_drop_points / n_points) >= FRONT_AGREEMENT_FRACTION
+    temp_widespread = (temp_drop_points / n_points) >= FRONT_AGREEMENT_FRACTION
+    wind_widespread = (north_shift_points / n_points) >= FRONT_AGREEMENT_FRACTION
+
     return {
-        "dewpoint_drop_f": round(dewpoint_drop, 1),
-        "temp_drop_f": round(temp_drop, 1),
-        "shift_to_north": shift_to_north,
-        "front_signal": dewpoint_drop >= DEWPOINT_DROP_THRESHOLD_F or shift_to_north,
-        "cooling_signal": temp_drop >= TEMP_DROP_THRESHOLD_F,
+        "dewpoint_drop_f": round(max_dewpoint_drop, 1),
+        "temp_drop_f": round(max_temp_drop, 1),
+        "shift_to_north": wind_widespread,
+        "front_signal": dewpoint_widespread or wind_widespread,
+        "cooling_signal": temp_widespread,
     }
 
 
@@ -279,11 +308,11 @@ def build_front_signal_section(signal):
     if signal["front_signal"]:
         lines.append("FRONT WATCH:")
         if signal["dewpoint_drop_f"] >= DEWPOINT_DROP_THRESHOLD_F:
-            lines.append(f"- Sharp dewpoint drop: models show up to {signal['dewpoint_drop_f']}F drop within 24h somewhere in the corridor")
+            lines.append(f"- Dewpoints dropping sharply and widely across the region -- up to {signal['dewpoint_drop_f']}F drop within 24h")
         if signal["shift_to_north"]:
-            lines.append("- Winds shifting more out of the north over the period -- sign of a front pushing through")
+            lines.append("- Winds shifting more out of the north across most of the region -- front pushing through")
     if signal["cooling_signal"]:
-        lines.append(f"- Temperature trend (Euro): up to {signal['temp_drop_f']}F cooler within 24h somewhere in the corridor")
+        lines.append(f"- Meaningful, widespread cooling signal (Euro): up to {signal['temp_drop_f']}F within 24h across most of the corridor")
     return lines or None
 
 
