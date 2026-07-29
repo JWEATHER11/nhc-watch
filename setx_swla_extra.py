@@ -455,20 +455,27 @@ TREND_TEMP_CHANGE_THRESHOLD_F = 5.0
 TREND_PRESSURE_CHANGE_THRESHOLD_MB = 3.0
 
 
-def build_trend_snapshot(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan):
+def build_trend_snapshot(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan, temp_buckets=None):
     """A compact snapshot of the key numbers from this cycle, stored so
-    the last 2-4 cycles can be compared against each other, per
-    instruction -- not just the immediately previous one."""
+    the last 3-4 cycles can be compared against each other, per
+    instruction -- not just the immediately previous one. Rainfall
+    trend is tracked from Euro specifically, per instruction."""
     snapshot = {}
     if setx_swla_outlook:
-        snapshot["short_rain_in"] = setx_swla_outlook.get("short_gfs_in")
-        snapshot["medium_rain_in"] = setx_swla_outlook.get("medium_gfs_in")
+        snapshot["short_rain_in"] = setx_swla_outlook.get("short_euro_in")
+        snapshot["medium_rain_in"] = setx_swla_outlook.get("medium_euro_in")
         snapshot["coverage_pct"] = setx_swla_outlook.get("coverage_pct")
         snapshot["medium_coverage_pct"] = setx_swla_outlook.get("medium_coverage_pct")
         snapshot["long_coverage_pct"] = setx_swla_outlook.get("long_coverage_pct")
     if front_signal:
         snapshot["temp_drop_f"] = front_signal.get("temp_drop_f")
         snapshot["front_signal"] = front_signal.get("front_signal")
+    if temp_buckets:
+        snapshot["short_temp_f"] = temp_buckets.get("short_temp_f")
+        snapshot["medium_temp_f"] = temp_buckets.get("medium_temp_f")
+        snapshot["temp_5_7_f"] = temp_buckets.get("temp_5_7_f")
+        snapshot["temp_7_10_f"] = temp_buckets.get("temp_7_10_f")
+        snapshot["avg_dewpoint_f"] = temp_buckets.get("avg_dewpoint_f")
     lowest_mb = None
     best_wind_mph = None
     for scan in (gfs_scan, ecmwf_scan):
@@ -541,13 +548,31 @@ def build_trending_message(cycle_hour_utc, history):
     elif cur_mb is not None and prev_mb is None:
         notes.append("New tropical signal showing up that wasn't there a few runs ago.")
 
-    # Temperature / front trend.
+    # Temperature by range, per instruction -- short/medium/5-7/7-10 day.
+    for key, label in (
+        ("short_temp_f", "Short-term"),
+        ("medium_temp_f", "Medium-term"),
+        ("temp_5_7_f", "Days 5-7"),
+        ("temp_7_10_f", "Days 7-10"),
+    ):
+        cur_t = newest.get(key)
+        prev_t = oldest.get(key)
+        temp_dir = _trend_direction(cur_t, prev_t, 3.0, "warmer", "colder")
+        if temp_dir:
+            notes.append(f"{label} temperatures trending {temp_dir} over the last {len(history)} runs.")
+
+    cur_dp = newest.get("avg_dewpoint_f")
+    prev_dp = oldest.get("avg_dewpoint_f")
+    if cur_dp is not None and prev_dp is not None and (prev_dp - cur_dp) >= 3.0:
+        notes.append(f"Dewpoints dropping over the last {len(history)} runs.")
+
+    # Front trend.
     cur_drop = newest.get("temp_drop_f")
     prev_drop = oldest.get("temp_drop_f")
     if cur_drop is not None and prev_drop is not None:
         diff = cur_drop - prev_drop
         if diff >= 3.0:
-            notes.append(f"Stronger cold front signal developing -- temperatures trending colder over the last {len(history)} runs.")
+            notes.append(f"Stronger cold front signal developing over the last {len(history)} runs.")
         elif diff <= -3.0:
             notes.append(f"Cold front signal weakening over the last {len(history)} runs.")
     cur_front = newest.get("front_signal")
