@@ -1,3 +1,12 @@
 {
-  "quiet_announced_date": "2026-07-29"
+  "quiet_announced_date": "2026-07-29",
+  "last_combined_cycle": "2026-07-29T06",
+  "trend_snapshots": [
+    {
+      "short_rain_in": 0.0,
+      "coverage_pct": 20,
+      "temp_drop_f": 5.1,
+      "tropical_lowest_mb": 1006.1
+    }
+  ]
 }
