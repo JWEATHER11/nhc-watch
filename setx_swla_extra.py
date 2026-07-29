@@ -601,11 +601,22 @@ CITY_POINTS = {
 MEANINGFUL_TEMP_DIFF_F = 4.0
 
 
+# Extra points blended with Houston/Beaumont for a better high/low
+# than a single city point, per instruction.
+TEMP_BLEND_EXTRA_POINTS = {
+    "Lumberton": (30.27, -94.20),
+    "Silsbee": (30.34, -94.18),
+}
+
+
 def fetch_conditions_detail():
     """Highs/lows, heat index, dewpoint trend, wind, rain timing, and a
-    simple pattern one-liner -- from Euro, for the local area."""
-    lat_str = ",".join(str(p[0]) for p in CITY_POINTS.values())
-    lon_str = ",".join(str(p[1]) for p in CITY_POINTS.values())
+    simple pattern one-liner -- from Euro, for the local area. Highs/
+    lows are blended across Houston-Beaumont-Lumberton-Silsbee, per
+    instruction, not a single point."""
+    all_points = {**CITY_POINTS, **TEMP_BLEND_EXTRA_POINTS}
+    lat_str = ",".join(str(p[0]) for p in all_points.values())
+    lon_str = ",".join(str(p[1]) for p in all_points.values())
     cache_buster = int(time.time())
     url = (
         f"https://api.open-meteo.com/v1/ecmwf"
@@ -624,15 +635,25 @@ def fetch_conditions_detail():
     if not isinstance(points, list) or len(points) < 3:
         return None
 
-    names = list(CITY_POINTS.keys())
+    names = list(all_points.keys())
     by_city = dict(zip(names, points))
-    bpt = by_city["Beaumont/Port Arthur"]
 
-    daily = bpt.get("daily", {})
-    highs = daily.get("temperature_2m_max", [])
-    lows = daily.get("temperature_2m_min", [])
-    today_high = highs[0] if highs else None
-    today_low = lows[0] if lows else None
+    # Houston-Beaumont-Lumberton-Silsbee blend for the high/low, per
+    # instruction, instead of a single Beaumont/Port Arthur point.
+    blend_names = ["Houston", "Beaumont/Port Arthur", "Lumberton", "Silsbee"]
+    blend_highs, blend_lows = [], []
+    for name in blend_names:
+        daily = by_city.get(name, {}).get("daily", {})
+        h = daily.get("temperature_2m_max", [])
+        l = daily.get("temperature_2m_min", [])
+        if h and h[0] is not None:
+            blend_highs.append(h[0])
+        if l and l[0] is not None:
+            blend_lows.append(l[0])
+    today_high = round(sum(blend_highs) / len(blend_highs)) if blend_highs else None
+    today_low = round(sum(blend_lows) / len(blend_lows)) if blend_lows else None
+
+    bpt = by_city["Beaumont/Port Arthur"]
 
     diff_notes = []
     for city in ("Houston", "Lake Charles"):
@@ -742,7 +763,7 @@ def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan,
         hi = f"{details['today_high_f']}F" if details["today_high_f"] is not None else "n/a"
         lo = f"{details['today_low_f']}F" if details["today_low_f"] is not None else "n/a"
         extra = f" ({'; '.join(details['diff_notes'])})" if details["diff_notes"] else ""
-        lines.append(f"- Beaumont/Port Arthur: high {hi}, low {lo}{extra}")
+        lines.append(f"- Houston/Beaumont area blend: high {hi}, low {lo}{extra}")
     if details["heat_index_f"] is not None:
         lines.append(f"- Heat index up to {details['heat_index_f']}F today")
     if details["dewpoint_trend"] != "steady":
