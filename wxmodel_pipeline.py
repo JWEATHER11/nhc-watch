@@ -934,8 +934,13 @@ def process_combined_cycle(state):
     setx_swla_outlook = _sx.fetch_setx_swla_rainfall_outlook()
     ndfd_summary = _sx.fetch_ndfd_qpf_summary()
     front_signal = _sx.fetch_front_signal()
+    line_signal = _sx.fetch_organized_line_signal()
+    temp_gradient = _sx.fetch_temperature_gradient()
+    ndfd_changed = ndfd_summary != state.get("last_ndfd_summary")
+    if ndfd_summary:
+        state["last_ndfd_summary"] = ndfd_summary
     cycle_hour_utc = int(cycle_key.split("T")[1])
-    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal)
+    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed)
     try:
         deliver(message)
     except Exception as e:
