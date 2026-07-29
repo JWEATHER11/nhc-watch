@@ -4,7 +4,7 @@
   "ecmwf_det_cycle": "2026-07-28T00:00",
   "trend_snapshots": [
     {
-      "short_rain_in": 0.0,
+      "short_rain_in": 0,
       "coverage_pct": 0,
       "temp_drop_f": 9.4,
       "tropical_lowest_mb": 1006.7
@@ -15,6 +15,5 @@
       "temp_drop_f": 7.2,
       "tropical_lowest_mb": 1007.2
     }
-  ],
-  "last_combined_cycle": "2026-07-28T18"
+  ]
 }
