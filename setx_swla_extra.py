@@ -80,17 +80,22 @@ def fetch_setx_swla_rainfall_outlook():
                     long_wet_points += 1
     long_confidence_pct = round(100 * long_wet_points / long_total_points) if long_total_points else None
 
-    coverage_points = 0
-    coverage_total = 0
-    if gfs_points:
-        for point in gfs_points:
-            daily_mm = point.get("daily", {}).get("precipitation_sum", [])
-            days = [v for v in daily_mm[:3] if v is not None]
-            if days:
-                coverage_total += 1
-                if sum(days) >= 2.5:
-                    coverage_points += 1
-    coverage_pct = round(100 * coverage_points / coverage_total) if coverage_total else None
+    def coverage_for_range(day_start, day_end):
+        points_hit = 0
+        points_total = 0
+        if gfs_points:
+            for point in gfs_points:
+                daily_mm = point.get("daily", {}).get("precipitation_sum", [])
+                days = [v for v in daily_mm[day_start:day_end] if v is not None]
+                if days:
+                    points_total += 1
+                    if sum(days) >= 2.5:
+                        points_hit += 1
+        return round(100 * points_hit / points_total) if points_total else None
+
+    coverage_pct = coverage_for_range(0, 3)
+    medium_coverage_pct = coverage_for_range(3, 5)
+    long_coverage_pct = coverage_for_range(5, 10)
 
     max_hourly_in = 0.0
     for points in (gfs_points, euro_points, hrrr_points):
@@ -112,21 +117,50 @@ def fetch_setx_swla_rainfall_outlook():
         "medium_euro_in": medium_euro,
         "long_confidence_pct": long_confidence_pct,
         "coverage_pct": coverage_pct,
+        "medium_coverage_pct": medium_coverage_pct,
+        "long_coverage_pct": long_coverage_pct,
         "max_hourly_in": round(max_hourly_in, 1),
         "heavy_potential": max_hourly_in >= TRAINING_STORM_HOURLY_THRESHOLD_IN,
     }
 
 
-def _coverage_label(pct):
+def _coverage_word(pct):
+    """Plain-language coverage word only -- isolated / scattered /
+    numerous / widespread, per instruction (no percentages for medium
+    and longer term)."""
     if pct is None:
-        return "coverage estimate unavailable"
-    if pct >= 60:
-        return f"widespread, {pct}% of the corridor"
-    if pct >= 40:
-        return f"scattered to widespread, {pct}% of the corridor"
+        return None
+    if pct >= 70:
+        return "widespread"
+    if pct >= 50:
+        return "numerous"
+    if pct >= 30:
+        return "scattered"
     if pct >= 10:
-        return f"isolated, {pct}% of the corridor"
-    return f"mostly dry, {pct}% of the corridor"
+        return "isolated"
+    return "mostly dry"
+
+
+def _coverage_label(pct):
+    """Short-term coverage: word AND percentage, per instruction."""
+    word = _coverage_word(pct)
+    if word is None:
+        return "coverage estimate unavailable"
+    return f"{word}, {pct}% of the corridor"
+
+
+def _long_range_pattern(coverage_pct):
+    """Descriptive longer-term pattern phrase instead of a raw
+    confidence percentage, per instruction."""
+    if coverage_pct is None:
+        return "longer-range signal unavailable this cycle"
+    if coverage_pct >= 60:
+        return "Longer term looks more active with higher rain chances"
+    if coverage_pct >= 35:
+        return "Longer term is trending toward a wetter pattern"
+    if coverage_pct >= 15:
+        return "Longer term remains quiet with limited rain chances"
+    return "Longer term continues to look mostly dry"
 
 
 def fetch_ndfd_qpf_summary():
@@ -155,28 +189,32 @@ def build_setx_swla_section(outlook):
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
     lines.append("Short term (day of + 2-3 days):")
+    # Euro and HRRR get top billing for precip per instruction; GFS
+    # still shown for cross-check.
     parts = []
-    if outlook["short_gfs_in"] is not None:
-        parts.append(f"GFS {outlook['short_gfs_in']}\"")
     if outlook["short_euro_in"] is not None:
         parts.append(f"Euro {outlook['short_euro_in']}\"")
+    if outlook["short_gfs_in"] is not None:
+        parts.append(f"GFS {outlook['short_gfs_in']}\"")
     lines.append("- " + (", ".join(parts) if parts else "data unavailable") + " across the Houston-Beaumont-Port Arthur-Jasper-Lake Charles corridor")
     lines.append(f"- Coverage: {_coverage_label(outlook['coverage_pct'])}")
     lines.append("Medium term (3-5 days):")
     parts = []
-    if outlook["medium_gfs_in"] is not None:
-        parts.append(f"GFS {outlook['medium_gfs_in']}\"")
     if outlook["medium_euro_in"] is not None:
         parts.append(f"Euro {outlook['medium_euro_in']}\"")
+    if outlook["medium_gfs_in"] is not None:
+        parts.append(f"GFS {outlook['medium_gfs_in']}\"")
     lines.append("- " + (", ".join(parts) if parts else "data unavailable"))
+    medium_word = _coverage_word(outlook.get("medium_coverage_pct"))
+    if medium_word:
+        lines.append(f"- Coverage: {medium_word}")
     lines.append("Longer term (5+ days):")
-    if outlook["long_confidence_pct"] is not None:
-        wet_or_dry = "rain chances" if outlook["long_confidence_pct"] >= 40 else "mainly dry"
-        lines.append(f"- {wet_or_dry}, confidence ~{outlook['long_confidence_pct']}% (model agreement across the corridor)")
-    else:
-        lines.append("- longer-range signal unavailable this cycle")
+    lines.append("- " + _long_range_pattern(outlook.get("long_coverage_pct")))
+    long_word = _coverage_word(outlook.get("long_coverage_pct"))
+    if long_word:
+        lines.append(f"- Coverage: {long_word}")
     if outlook["heavy_potential"]:
-        lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor (GFS/Euro/HRRR), watch for training storms/localized flooding")
+        lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor (Euro/HRRR/GFS), watch for training storms/localized flooding")
     else:
         lines.append("- Heavy rain potential: nothing pointing to 1\"+/hr training storms right now")
     return lines
