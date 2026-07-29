@@ -663,6 +663,13 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     import setx_swla_extra as _sx2
     lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
     try:
+        hrrr_grid_detail = _sx2.fetch_hrrr_grid_detail()
+        hrrr_grid_lines = _sx2.build_hrrr_grid_note(hrrr_grid_detail)
+        if hrrr_grid_lines:
+            lines.extend(hrrr_grid_lines)
+    except Exception as e:
+        print(f"[Combined cycle] HRRR grid detail unavailable (non-fatal): {e}")
+    try:
         conditions_detail = _sx2.fetch_conditions_detail()
         conditions_lines = _sx2.build_conditions_section(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
         if conditions_lines:
