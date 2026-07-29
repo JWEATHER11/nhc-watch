@@ -689,8 +689,12 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
             region = classify_region(best["lat"], best["lon"])
             wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
             lines.append(f"- {label}: lowest {best['mslp_mb']} mb near {region} by hour {best['fh']}{wind_str}")
-            if best["mslp_mb"] < INTERESTING_MSLP_THRESHOLD_MB:
-                is_interesting = True
+            # NOTE: raw deterministic MSLP dipping below a threshold
+            # somewhere across a wide multi-day grid is normal
+            # background noise on its own -- per instruction, this must
+            # NOT drive the tropical-development summary by itself.
+            # Only genuine ensemble agreement or an explicit NHC
+            # formation percentage does that (see below).
         else:
             lines.append(f"- {label}: data unavailable this cycle")
 
