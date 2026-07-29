@@ -204,8 +204,16 @@ def _long_range_pattern(coverage_pct):
     return "Longer term continues to look mostly dry"
 
 
-def fetch_ndfd_qpf_summary():
-    summaries = []
+# Rounds to the nearest 0.5" for comparison, per instruction -- tiny
+# fluctuations between cycles shouldn't count as a "meaningful change."
+NDFD_MEANINGFUL_CHANGE_IN = 0.5
+NDFD_MAX_SENDS_PER_DAY = 2
+
+
+def fetch_ndfd_qpf_totals():
+    """Returns {office_name: total_in} -- raw numbers, used both for
+    display and for comparing cycle-to-cycle for meaningful change."""
+    totals = {}
     for office_name, url in NDFD_OFFICES.items():
         cache_buster = int(time.time())
         data = w._fetch_with_retries_bytes(f"{url}?_cb={cache_buster}", f"NDFD:{office_name}")
@@ -221,8 +229,37 @@ def fetch_ndfd_qpf_summary():
             val = entry.get("value")
             if val is not None:
                 total_in += val / 25.4
-        summaries.append(f"{office_name} NDFD: ~{round(total_in, 1)}\" over 7 days")
-    return summaries or None
+        totals[office_name] = round(total_in, 1)
+    return totals or None
+
+
+def describe_ndfd_change(current_totals, previous_totals, send_count_today):
+    """Decides whether the NWS comparison is actually worth sending,
+    per instruction -- strict: only when something meaningfully changed,
+    and capped at NDFD_MAX_SENDS_PER_DAY total for the day. Returns
+    (should_send, message_lines, updated_totals_to_store)."""
+    if not current_totals:
+        return False, None, previous_totals
+
+    if send_count_today >= NDFD_MAX_SENDS_PER_DAY:
+        return False, None, current_totals
+
+    if not previous_totals:
+        lines = [f"{office}: ~{total}\" over 7 days" for office, total in current_totals.items()]
+        return True, lines, current_totals
+
+    changes = []
+    for office, total in current_totals.items():
+        prev = previous_totals.get(office)
+        if prev is None:
+            changes.append(f"{office}: new data available, ~{total}\" over 7 days")
+        elif abs(total - prev) >= NDFD_MEANINGFUL_CHANGE_IN:
+            direction = "up" if total > prev else "down"
+            changes.append(f"{office}: {direction} from {prev}\" to {total}\" over 7 days")
+
+    if not changes:
+        return False, None, current_totals
+    return True, changes, current_totals
 
 
 def build_setx_swla_section(outlook):
