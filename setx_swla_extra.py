@@ -67,6 +67,28 @@ def fetch_setx_swla_rainfall_outlook():
     medium_gfs = bucket_totals(gfs_points, 3, 5)
     short_euro = bucket_totals(euro_points, 0, 3)
     medium_euro = bucket_totals(euro_points, 3, 5)
+    # HRRR only extends ~48h, so "today + tomorrow" is its full useful
+    # range here, per instruction.
+    short_hrrr = bucket_totals(hrrr_points, 0, 2)
+
+    def coverage_word_for(points, day_start, day_end):
+        hits = 0
+        total = 0
+        if not points:
+            return None
+        for point in points:
+            daily_mm = point.get("daily", {}).get("precipitation_sum", [])
+            days = [v for v in daily_mm[day_start:day_end] if v is not None]
+            if days:
+                total += 1
+                if sum(days) >= 2.5:
+                    hits += 1
+        if total == 0:
+            return None
+        pct = round(100 * hits / total)
+        return _coverage_word(pct)
+
+    hrrr_coverage_word = coverage_word_for(hrrr_points, 0, 2)
 
     long_wet_points = 0
     long_total_points = 0
@@ -79,6 +101,19 @@ def fetch_setx_swla_rainfall_outlook():
                 if sum(days) / 25.4 >= 0.25:
                     long_wet_points += 1
     long_confidence_pct = round(100 * long_wet_points / long_total_points) if long_total_points else None
+
+    # Explicit 1-3" and 1-5" additional-rainfall check for days 5-10,
+    # per instruction -- a plain yes/no rather than just a percentage.
+    max_long_total_in = 0.0
+    if gfs_points:
+        for point in gfs_points:
+            daily_mm = point.get("daily", {}).get("precipitation_sum", [])
+            days = [v for v in daily_mm[5:10] if v is not None]
+            if days:
+                max_long_total_in = max(max_long_total_in, sum(days) / 25.4)
+    sees_1in_plus = max_long_total_in >= 1.0
+    sees_3in_plus = max_long_total_in >= 3.0
+    sees_5in_plus = max_long_total_in >= 5.0
 
     def coverage_for_range(day_start, day_end):
         points_hit = 0
@@ -121,6 +156,12 @@ def fetch_setx_swla_rainfall_outlook():
         "long_coverage_pct": long_coverage_pct,
         "max_hourly_in": round(max_hourly_in, 1),
         "heavy_potential": max_hourly_in >= TRAINING_STORM_HOURLY_THRESHOLD_IN,
+        "short_hrrr_in": short_hrrr,
+        "hrrr_coverage_word": hrrr_coverage_word,
+        "max_long_total_in": round(max_long_total_in, 1),
+        "sees_1in_plus": sees_1in_plus,
+        "sees_3in_plus": sees_3in_plus,
+        "sees_5in_plus": sees_5in_plus,
     }
 
 
@@ -198,6 +239,11 @@ def build_setx_swla_section(outlook):
         parts.append(f"GFS {outlook['short_gfs_in']}\"")
     lines.append("- " + (", ".join(parts) if parts else "data unavailable") + " across the Houston-Beaumont-Port Arthur-Jasper-Lake Charles corridor")
     lines.append(f"- Coverage: {_coverage_label(outlook['coverage_pct'])}")
+    if outlook.get("short_hrrr_in") is not None:
+        hrrr_cov = outlook.get("hrrr_coverage_word") or "coverage unclear"
+        lines.append(f"- HRRR (today + tomorrow): {outlook['short_hrrr_in']}\" possible, {hrrr_cov}")
+    else:
+        lines.append("- HRRR (today + tomorrow): data unavailable this cycle")
     lines.append("Medium term (3-5 days):")
     parts = []
     if outlook["medium_euro_in"] is not None:
@@ -213,6 +259,11 @@ def build_setx_swla_section(outlook):
     long_word = _coverage_word(outlook.get("long_coverage_pct"))
     if long_word:
         lines.append(f"- Coverage: {long_word}")
+    if outlook.get("max_long_total_in") is not None:
+        yn_1 = "Yes" if outlook.get("sees_1in_plus") else "No"
+        yn_3 = "Yes" if outlook.get("sees_3in_plus") else "No"
+        yn_5 = "Yes" if outlook.get("sees_5in_plus") else "No"
+        lines.append(f"- Additional rainfall potential beyond day 5: up to {outlook['max_long_total_in']}\" somewhere in the corridor (1\"+: {yn_1}, 3\"+: {yn_3}, 5\"+: {yn_5})")
     if outlook["heavy_potential"]:
         lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor (Euro/HRRR/GFS), watch for training storms/localized flooding")
     else:
