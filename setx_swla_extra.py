@@ -266,7 +266,7 @@ def build_setx_swla_section(outlook):
     if not outlook:
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
-    lines.append("Short term (day of + 2-3 days):")
+    lines.append("<b>Short term</b> (day of + 2-3 days)")
     # Euro and HRRR get top billing for precip per instruction; GFS
     # still shown for cross-check.
     parts = []
@@ -281,7 +281,8 @@ def build_setx_swla_section(outlook):
         lines.append(f"- HRRR (today + tomorrow): {outlook['short_hrrr_in']}\" possible, {hrrr_cov}")
     else:
         lines.append("- HRRR (today + tomorrow): data unavailable this cycle")
-    lines.append("Medium term (3-5 days):")
+    lines.append("")
+    lines.append("<b>Medium term</b> (3-5 days)")
     parts = []
     if outlook["medium_euro_in"] is not None:
         parts.append(f"Euro {outlook['medium_euro_in']}\"")
@@ -291,7 +292,8 @@ def build_setx_swla_section(outlook):
     medium_word = _coverage_word(outlook.get("medium_coverage_pct"))
     if medium_word:
         lines.append(f"- Coverage: {medium_word}")
-    lines.append("Longer term (5+ days):")
+    lines.append("")
+    lines.append("<b>Longer term</b> (5+ days)")
     lines.append("- " + _long_range_pattern(outlook.get("long_coverage_pct")))
     long_word = _coverage_word(outlook.get("long_coverage_pct"))
     if long_word:
@@ -708,7 +710,7 @@ def build_pattern_oneliner(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan
 def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan):
     if not details:
         return []
-    lines = []
+    lines = ["", "<b>Temperature / Wind / Other</b>"]
     if details["today_high_f"] is not None or details["today_low_f"] is not None:
         hi = f"{details['today_high_f']}F" if details["today_high_f"] is not None else "n/a"
         lo = f"{details['today_low_f']}F" if details["today_low_f"] is not None else "n/a"
