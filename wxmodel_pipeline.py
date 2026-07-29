@@ -900,7 +900,8 @@ def process_combined_cycle(state):
     # two, and send a short second message right after the main one --
     # per instruction, only flagging what's actually changed.
     try:
-        snapshot = _sx.build_trend_snapshot(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
+        temp_buckets = _sx.fetch_temperature_buckets()
+        snapshot = _sx.build_trend_snapshot(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan, temp_buckets)
         history = state.get(_sx.TREND_HISTORY_KEY, [])
         history = [snapshot] + history[:3]  # up to 4 runs total, per instruction
         trend_message = _sx.build_trending_message(cycle_hour_utc, history)
