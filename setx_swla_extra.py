@@ -1074,3 +1074,142 @@ def build_hrrr_grid_note(detail):
         near = f" near {detail['max_near']}" if detail["max_near"] else ""
         lines.append(f"- Isolated higher totals possible: up to {detail['max_total_in']}\"{near} in the HRRR grid")
     return lines
+
+
+# --- 7-Day Forecast section ------------------------------------------
+# HRRR for the short-term days (its real range), Euro for the rest,
+# per instruction. Grid points: Beaumont, Houston, Lumberton, Silsbee,
+# Woodville, Jasper, Orange.
+
+SEVEN_DAY_POINTS = {
+    "Beaumont": (30.08, -94.10),
+    "Houston": (29.76, -95.37),
+    "Lumberton": (30.27, -94.20),
+    "Silsbee": (30.34, -94.18),
+    "Woodville": (30.78, -94.41),
+    "Jasper": (30.92, -93.99),
+    "Orange": (30.09, -93.74),
+}
+
+
+def fetch_temperature_blend():
+    """High/low blended across Houston-Beaumont-Lumberton-Silsbee, per
+    instruction -- not a single Beaumont/Port Arthur point."""
+    names = ["Houston", "Beaumont", "Lumberton", "Silsbee"]
+    lat_str = ",".join(str(SEVEN_DAY_POINTS[n][0]) for n in names)
+    lon_str = ",".join(str(SEVEN_DAY_POINTS[n][1]) for n in names)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/ecmwf"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=temperature_2m_max,temperature_2m_min"
+        f"&forecast_days=1&temperature_unit=fahrenheit&_cb={cache_buster}"
+    )
+    data = w._fetch_with_retries_bytes(url, "TempBlend:ecmwf")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list):
+        return None
+    highs, lows = [], []
+    for point in points:
+        daily = point.get("daily", {})
+        h = daily.get("temperature_2m_max", [])
+        l = daily.get("temperature_2m_min", [])
+        if h and h[0] is not None:
+            highs.append(h[0])
+        if l and l[0] is not None:
+            lows.append(l[0])
+    if not highs or not lows:
+        return None
+    return {"high_f": round(sum(highs) / len(highs)), "low_f": round(sum(lows) / len(lows))}
+
+
+def fetch_seven_day_forecast():
+    """Simple day-by-day 7-day forecast: HRRR for days it actually
+    covers (today/tomorrow), Euro for the rest, per instruction."""
+    names = list(SEVEN_DAY_POINTS.keys())
+    lat_str = ",".join(str(SEVEN_DAY_POINTS[n][0]) for n in names)
+    lon_str = ",".join(str(SEVEN_DAY_POINTS[n][1]) for n in names)
+    cache_buster = int(time.time())
+
+    def fetch(endpoint, models_param=None, forecast_days=7):
+        models_bit = f"&models={models_param}" if models_param else ""
+        url = (
+            f"https://api.open-meteo.com/v1/{endpoint}"
+            f"?latitude={lat_str}&longitude={lon_str}"
+            f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum"
+            f"&forecast_days={forecast_days}{models_bit}&temperature_unit=fahrenheit&_cb={cache_buster}"
+        )
+        data = w._fetch_with_retries_bytes(url, f"SevenDay:{endpoint}:{models_param or 'auto'}")
+        if not data:
+            return None
+        try:
+            points = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        return points if isinstance(points, list) else None
+
+    hrrr_points = fetch("forecast", models_param="ncep_hrrr_conus", forecast_days=2)
+    euro_points = fetch("ecmwf", forecast_days=7)
+
+    if not euro_points:
+        return None
+
+    def day_stats(points, day_idx):
+        if not points:
+            return None
+        highs, lows, rains, hits = [], [], [], 0
+        total = 0
+        for point in points:
+            daily = point.get("daily", {})
+            h = daily.get("temperature_2m_max", [])
+            l = daily.get("temperature_2m_min", [])
+            p = daily.get("precipitation_sum", [])
+            if day_idx < len(h) and h[day_idx] is not None:
+                highs.append(h[day_idx])
+            if day_idx < len(l) and l[day_idx] is not None:
+                lows.append(l[day_idx])
+            if day_idx < len(p) and p[day_idx] is not None:
+                total += 1
+                rains.append(p[day_idx])
+                if p[day_idx] >= 2.5:
+                    hits += 1
+        if not highs or not lows:
+            return None
+        rain_pct = round(100 * hits / total) if total else 0
+        return {
+            "high_f": round(sum(highs) / len(highs)),
+            "low_f": round(sum(lows) / len(lows)),
+            "rain_pct": rain_pct,
+        }
+
+    days = []
+    for day_idx in range(7):
+        # HRRR only meaningfully covers day 0 (today) and day 1
+        # (tomorrow) -- use it there, Euro for the rest, per instruction.
+        stats = None
+        if day_idx <= 1 and hrrr_points:
+            stats = day_stats(hrrr_points, day_idx)
+        if stats is None:
+            stats = day_stats(euro_points, day_idx)
+        days.append(stats)
+
+    return days
+
+
+def build_seven_day_section(days):
+    if not days or not any(days):
+        return None
+    lines = ["", "<b>7-Day Forecast</b>"]
+    day_labels = ["Day 1 (Today)", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"]
+    for label, stats in zip(day_labels, days):
+        if not stats:
+            lines.append(f"{label}: data unavailable")
+            continue
+        cov_word = _coverage_word(stats["rain_pct"]) or "mostly dry"
+        lines.append(f"{label}: High {stats['high_f']} / Low {stats['low_f']} / Rain: {stats['rain_pct']}% ({cov_word})")
+    return lines
