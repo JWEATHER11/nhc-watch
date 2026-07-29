@@ -732,11 +732,13 @@ def build_pattern_oneliner(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan
     return None
 
 
-def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan):
+def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan, temp_blend=None):
     if not details:
         return []
     lines = ["", "<b>Temperature / Wind / Other</b>"]
-    if details["today_high_f"] is not None or details["today_low_f"] is not None:
+    if temp_blend and temp_blend.get("high_f") is not None:
+        lines.append(f"- High {temp_blend['high_f']}F, low {temp_blend['low_f']}F (Houston-Beaumont-Lumberton-Silsbee blend)")
+    elif details["today_high_f"] is not None or details["today_low_f"] is not None:
         hi = f"{details['today_high_f']}F" if details["today_high_f"] is not None else "n/a"
         lo = f"{details['today_low_f']}F" if details["today_low_f"] is not None else "n/a"
         extra = f" ({'; '.join(details['diff_notes'])})" if details["diff_notes"] else ""
