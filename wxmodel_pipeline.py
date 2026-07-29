@@ -230,7 +230,7 @@ def send_telegram(text):
     max_len = 4000
     chunks = [text[i:i + max_len] for i in range(0, len(text), max_len)] or [text]
     for idx, chunk in enumerate(chunks, 1):
-        payload = json.dumps({"chat_id": chat_id, "text": chunk}).encode("utf-8")
+        payload = json.dumps({"chat_id": chat_id, "text": chunk, "parse_mode": "HTML"}).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
         last_err = None
         for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -648,8 +648,8 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M%p %Z").replace(" 0", " ")
-    lines = ["Tropical Watch -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
-    lines.append("MAIN MODELS")
+    lines = ["<b>Tropical Watch</b> -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
+    lines.append("<b>MAIN MODELS</b>")
     for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
         if scan and scan.get("results"):
             best = min(scan["results"], key=lambda r: r["mslp_mb"])
@@ -664,7 +664,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     # explicit NHC formation percentage instead, not raw MSLP alone.
     is_interesting = False
     lines.append("")
-    lines.append("SIDE NOTES")
+    lines.append("<b>SIDE NOTES</b>")
     if aifs_scan and aifs_scan.get("results"):
         best = min(aifs_scan["results"], key=lambda r: r["mslp_mb"])
         region = classify_region(best["lat"], best["lon"])
@@ -701,12 +701,12 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
 
     if rainfall_flags:
         lines.append("")
-        lines.append("GULF COAST RAINFALL WATCH (next 10 days)")
+        lines.append("<b>GULF COAST RAINFALL WATCH</b> (next 10 days)")
         for model_name, r in rainfall_flags.items():
             lines.append(f"- {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
 
     lines.append("")
-    lines.append("SETX/SWLA LOCAL RAINFALL OUTLOOK (Houston to Lake Charles)")
+    lines.append("<b>SETX/SWLA OUTLOOK</b> (Houston to Lake Charles)")
     import setx_swla_extra as _sx2
     lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
     try:
@@ -731,9 +731,9 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
 
     lines.append("")
     if is_interesting:
-        lines.append("Summary: Signals of possible tropical development noted above -- worth watching closely.")
+        lines.append("<b>Summary:</b> Signals of possible tropical development noted above -- worth watching closely.")
     else:
-        lines.append("Summary: Quiet. No significant tropical signals detected this cycle.")
+        lines.append("<b>Summary:</b> Quiet. No significant tropical signals detected this cycle.")
 
     lines.append("")
     lines.append("Expect updates roughly: 00Z ~12AM, 06Z ~6AM, 12Z ~12PM, 18Z ~6PM (Beaumont time)")
