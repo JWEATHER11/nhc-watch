@@ -455,73 +455,108 @@ TREND_PRESSURE_CHANGE_THRESHOLD_MB = 3.0
 
 def build_trend_snapshot(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan):
     """A compact snapshot of the key numbers from this cycle, stored so
-    the next 1-2 cycles can be compared against it."""
+    the last 2-4 cycles can be compared against each other, per
+    instruction -- not just the immediately previous one."""
     snapshot = {}
     if setx_swla_outlook:
         snapshot["short_rain_in"] = setx_swla_outlook.get("short_gfs_in")
+        snapshot["medium_rain_in"] = setx_swla_outlook.get("medium_gfs_in")
         snapshot["coverage_pct"] = setx_swla_outlook.get("coverage_pct")
+        snapshot["medium_coverage_pct"] = setx_swla_outlook.get("medium_coverage_pct")
+        snapshot["long_coverage_pct"] = setx_swla_outlook.get("long_coverage_pct")
     if front_signal:
         snapshot["temp_drop_f"] = front_signal.get("temp_drop_f")
+        snapshot["front_signal"] = front_signal.get("front_signal")
     lowest_mb = None
+    best_wind_mph = None
     for scan in (gfs_scan, ecmwf_scan):
         if scan and scan.get("results"):
             best = min(scan["results"], key=lambda r: r["mslp_mb"])
             if lowest_mb is None or best["mslp_mb"] < lowest_mb:
                 lowest_mb = best["mslp_mb"]
+                best_wind_mph = best.get("wind_mph")
     if lowest_mb is not None:
         snapshot["tropical_lowest_mb"] = lowest_mb
+        snapshot["tropical_wind_mph"] = best_wind_mph
     return snapshot
 
 
+def _trend_direction(current, previous, threshold, higher_word, lower_word):
+    """Compares oldest vs newest in a list of values (ignoring None),
+    returns a direction word or None if unchanged/insufficient data."""
+    if current is None or previous is None:
+        return None
+    diff = current - previous
+    if diff >= threshold:
+        return higher_word
+    if diff <= -threshold:
+        return lower_word
+    return None
+
+
 def build_trending_message(cycle_hour_utc, history):
-    """history is a list of up to 3 snapshots, newest first (index 0 =
-    this cycle, 1 = previous, 2 = the one before that). Only flags what
-    actually changed, per instruction -- otherwise says so plainly."""
+    """history is a list of up to 4 snapshots, newest first. Compares
+    the newest against the OLDEST available in that window (2-4 runs),
+    per instruction, covering rainfall/coverage by range, tropical
+    trend, and temperature/front trend -- not just the single previous
+    run."""
     if len(history) < 2:
         return f"Trending ({cycle_hour_utc:02d}Z): Not enough prior cycles yet to compare."
 
-    current = history[0]
-    previous = history[1]
+    newest = history[0]
+    oldest = history[-1]  # oldest available within the last 2-4 runs
     notes = []
 
-    cur_rain = current.get("short_rain_in")
-    prev_rain = previous.get("short_rain_in")
-    if cur_rain is not None and prev_rain is not None:
-        diff = cur_rain - prev_rain
-        if diff >= TREND_RAIN_CHANGE_THRESHOLD_IN:
-            notes.append(f"Trending: Rainfall totals increasing over recent runs (+{round(diff,1)}\").")
-        elif diff <= -TREND_RAIN_CHANGE_THRESHOLD_IN:
-            notes.append(f"Trending: Rainfall totals decreasing over recent runs ({round(diff,1)}\").")
+    # Rainfall & coverage, per range.
+    short_dir = _trend_direction(newest.get("short_rain_in"), oldest.get("short_rain_in"), 0.2, "wetter", "drier")
+    short_cov_dir = _trend_direction(newest.get("coverage_pct"), oldest.get("coverage_pct"), 15, "more coverage", "less coverage")
+    if short_dir or short_cov_dir:
+        bits = [b for b in (short_dir, short_cov_dir) if b]
+        notes.append(f"Short-term trending {' and '.join(bits)} over the last {len(history)} runs.")
 
-    cur_cov = current.get("coverage_pct")
-    prev_cov = previous.get("coverage_pct")
-    if cur_cov is not None and prev_cov is not None:
-        diff = cur_cov - prev_cov
-        if diff >= TREND_COVERAGE_CHANGE_THRESHOLD_PCT:
-            notes.append(f"Trending: Storm coverage expanding vs previous runs (+{diff}%).")
-        elif diff <= -TREND_COVERAGE_CHANGE_THRESHOLD_PCT:
-            notes.append(f"Trending: Storm coverage shrinking vs previous runs ({diff}%).")
+    medium_dir = _trend_direction(newest.get("medium_rain_in"), oldest.get("medium_rain_in"), 0.2, "wetter", "drier")
+    medium_cov_dir = _trend_direction(newest.get("medium_coverage_pct"), oldest.get("medium_coverage_pct"), 15, "more coverage", "less coverage")
+    if medium_dir or medium_cov_dir:
+        bits = [b for b in (medium_dir, medium_cov_dir) if b]
+        notes.append(f"Medium-term trending {' and '.join(bits)} over the last {len(history)} runs.")
 
-    cur_temp_drop = current.get("temp_drop_f")
-    prev_temp_drop = previous.get("temp_drop_f")
-    if cur_temp_drop is not None and prev_temp_drop is not None:
-        diff = cur_temp_drop - prev_temp_drop
-        if diff >= TREND_TEMP_CHANGE_THRESHOLD_F:
-            notes.append("Trending: Stronger cold front signal -- temperatures trending colder run over run.")
+    long_cov_dir = _trend_direction(newest.get("long_coverage_pct"), oldest.get("long_coverage_pct"), 15, "more active", "quieter")
+    if long_cov_dir:
+        notes.append(f"Longer-term trending {long_cov_dir} over the last {len(history)} runs.")
 
-    cur_mb = current.get("tropical_lowest_mb")
-    prev_mb = previous.get("tropical_lowest_mb")
+    # Tropical: pressure (deepening = lower mb = stronger) and wind together.
+    cur_mb = newest.get("tropical_lowest_mb")
+    prev_mb = oldest.get("tropical_lowest_mb")
+    cur_wind = newest.get("tropical_wind_mph")
+    prev_wind = oldest.get("tropical_wind_mph")
     if cur_mb is not None and prev_mb is not None:
-        diff = prev_mb - cur_mb  # positive = deepening
-        if diff >= TREND_PRESSURE_CHANGE_THRESHOLD_MB:
-            notes.append(f"Trending: Tropical signal deepening/more organized vs previous runs (-{round(diff,1)} mb).")
-        elif diff <= -TREND_PRESSURE_CHANGE_THRESHOLD_MB:
-            notes.append(f"Trending: Tropical signal weakening/less organized vs previous runs (+{round(-diff,1)} mb).")
+        mb_diff = prev_mb - cur_mb  # positive = deepening
+        wind_diff = (cur_wind - prev_wind) if (cur_wind is not None and prev_wind is not None) else 0
+        if mb_diff >= 3.0 or wind_diff >= 10:
+            notes.append(f"Tropical signal uptrending -- stronger/more organized than {len(history)} runs ago.")
+        elif mb_diff <= -3.0 or wind_diff <= -10:
+            notes.append(f"Tropical signal downtrending -- weaker/less organized than {len(history)} runs ago.")
     elif cur_mb is not None and prev_mb is None:
-        notes.append("Trending: New tropical signal showing up that wasn't there last run.")
+        notes.append("New tropical signal showing up that wasn't there a few runs ago.")
+
+    # Temperature / front trend.
+    cur_drop = newest.get("temp_drop_f")
+    prev_drop = oldest.get("temp_drop_f")
+    if cur_drop is not None and prev_drop is not None:
+        diff = cur_drop - prev_drop
+        if diff >= 3.0:
+            notes.append(f"Stronger cold front signal developing -- temperatures trending colder over the last {len(history)} runs.")
+        elif diff <= -3.0:
+            notes.append(f"Cold front signal weakening over the last {len(history)} runs.")
+    cur_front = newest.get("front_signal")
+    prev_front = oldest.get("front_signal")
+    if cur_front and not prev_front:
+        notes.append("Front signal newly appearing in recent runs.")
+    elif prev_front and not cur_front:
+        notes.append("Front signal fading in recent runs.")
 
     if not notes:
-        return f"Trending ({cycle_hour_utc:02d}Z): No significant change from previous runs."
+        return f"Trending ({cycle_hour_utc:02d}Z): No significant trend -- rain, tropical, and temperature signals holding similar over the last {len(history)} runs."
 
     return f"Trending ({cycle_hour_utc:02d}Z):\n" + "\n".join(notes)
 
