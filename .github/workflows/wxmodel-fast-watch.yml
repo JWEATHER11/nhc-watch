@@ -34,7 +34,8 @@ jobs:
           WXMODEL_TELEGRAM_BOT_TOKEN: ${{ secrets.WXMODEL_TELEGRAM_BOT_TOKEN }}
           WXMODEL_TELEGRAM_CHAT_ID: ${{ secrets.WXMODEL_TELEGRAM_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python wxmodel_fast_loop.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u wxmodel_fast_loop.py
 
       - name: Final state commit (safety net)
         if: always()
