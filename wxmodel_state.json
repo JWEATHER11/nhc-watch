@@ -3,6 +3,22 @@
   "trend_snapshots": [
     {
       "short_rain_in": 0.1,
+      "medium_rain_in": 0.2,
+      "coverage_pct": 20,
+      "medium_coverage_pct": 80,
+      "long_coverage_pct": 100,
+      "temp_drop_f": 8.6,
+      "front_signal": false,
+      "short_temp_f": 94.0,
+      "medium_temp_f": 94.0,
+      "temp_5_7_f": 94.6,
+      "temp_7_10_f": 94.1,
+      "avg_dewpoint_f": 75.2,
+      "tropical_lowest_mb": 1006.4,
+      "tropical_wind_mph": 7
+    },
+    {
+      "short_rain_in": 0.1,
       "medium_rain_in": 0.1,
       "coverage_pct": 20,
       "medium_coverage_pct": 0,
@@ -43,15 +59,10 @@
       "front_signal": false,
       "tropical_lowest_mb": 1006.1,
       "tropical_wind_mph": 7
-    },
-    {
-      "short_rain_in": 0,
-      "coverage_pct": 0,
-      "temp_drop_f": 5.1,
-      "tropical_lowest_mb": 1006.1
     }
   ],
   "ndfd_send_day": "2026-07-29",
   "ndfd_send_count": 0,
-  "last_ndfd_totals": null
+  "last_ndfd_totals": null,
+  "last_combined_cycle": "2026-07-29T12"
 }
