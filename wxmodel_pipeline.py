@@ -616,7 +616,7 @@ def tier_label(pct):
 
 def current_cycle_key():
     now_utc = datetime.now(timezone.utc)
-    effective_time = now_utc - timedelta(hours=5)
+    effective_time = now_utc - timedelta(hours=6)  # matches Euro's real-world ~6h publication delay
     cycle_hour = (effective_time.hour // 6) * 6
     cycle_date = effective_time.strftime("%Y-%m-%d")
     return f"{cycle_date}T{cycle_hour:02d}"
