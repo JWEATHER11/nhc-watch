@@ -885,3 +885,57 @@ def build_temperature_gradient_note(gradient):
     if gradient["warmer_side"] == "south":
         return f"Strong temperature gradient setting up -- colder air to the north, warmer to the south, roughly {gradient['gradient_f']}F difference across the region"
     return f"Sharp temperature contrast developing near the region, about {gradient['gradient_f']}F colder to the south side of the corridor"
+
+
+# --- Multi-bucket temperature trend (short/medium/5-7/7-10 day) -----
+# Per instruction: Houston-Beaumont-Jasper-Lake Charles region,
+# temperature trend broken into more granular day ranges than the
+# basic front-signal check covers, plus a dewpoint trend value stored
+# for run-to-run comparison.
+
+def fetch_temperature_buckets():
+    """Average corridor high temps (Euro) for four day ranges: short
+    (0-3), medium (3-5), 5-7, and 7-10 days out -- plus an average
+    dewpoint value for the next 3 days, all for trend comparison across
+    runs (not a single-cycle report by itself)."""
+    lat_str = ",".join(str(p[0]) for p in SETX_SWLA_POINTS)
+    lon_str = ",".join(str(p[1]) for p in SETX_SWLA_POINTS)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/ecmwf"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=temperature_2m_max&hourly=dewpoint_2m"
+        f"&forecast_days=10&temperature_unit=fahrenheit&_cb={cache_buster}"
+    )
+    data = w._fetch_with_retries_bytes(url, "TempBuckets:ecmwf")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list):
+        return None
+
+    def bucket_avg(day_start, day_end):
+        vals = []
+        for point in points:
+            highs = point.get("daily", {}).get("temperature_2m_max", [])
+            days = [v for v in highs[day_start:day_end] if v is not None]
+            if days:
+                vals.append(sum(days) / len(days))
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    dp_vals = []
+    for point in points:
+        dp = point.get("hourly", {}).get("dewpoint_2m", [])[:72]
+        dp_vals.extend(v for v in dp if v is not None)
+    avg_dewpoint = round(sum(dp_vals) / len(dp_vals), 1) if dp_vals else None
+
+    return {
+        "short_temp_f": bucket_avg(0, 3),
+        "medium_temp_f": bucket_avg(3, 5),
+        "temp_5_7_f": bucket_avg(5, 7),
+        "temp_7_10_f": bucket_avg(7, 10),
+        "avg_dewpoint_f": avg_dewpoint,
+    }
