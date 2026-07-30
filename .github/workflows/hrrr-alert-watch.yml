@@ -1,0 +1,36 @@
+name: HRRR Alert Watch
+
+on:
+  schedule:
+    - cron: "5,35 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run HRRR alert pipeline
+        env:
+          WXMODEL_TELEGRAM_BOT_TOKEN: ${{ secrets.WXMODEL_TELEGRAM_BOT_TOKEN }}
+          WXMODEL_TELEGRAM_CHAT_ID: ${{ secrets.WXMODEL_TELEGRAM_CHAT_ID }}
+          PYTHONUNBUFFERED: "1"
+        run: python -u hrrr_alert_pipeline.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "hrrr-alert-watch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add hrrr_alert_state.json
+          git diff --quiet --cached || git commit -m "Update HRRR alert state [skip ci]"
+          git push
