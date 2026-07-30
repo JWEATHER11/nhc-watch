@@ -41,6 +41,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pyart
 
+import metar_storm_pipeline as metar
 import setx_swla_extra as sx
 
 STATE_FILE = Path(__file__).parent / "radar_watch_state.json"
@@ -60,6 +61,48 @@ SEVERE_DBZ = 50  # heavy rain / small hail possible
 RAIN_DBZ = 20  # light-rain floor, used only for the coverage context line
 MIN_STORM_GATES = 3  # a real cluster, not one noisy/anomalous gate
 RADAR_TREND_HISTORY_LEN = 4  # same "last 4 runs" trend window as the front-signal tracker
+APPROACHING_RADIUS_MI = 15  # close enough that "check radar now" is genuinely actionable
+
+
+def stations_approaching(site_data):
+    """Cross-references the raw (full-resolution, not the sparse 9x9
+    grid) reflectivity field against every corridor METAR station's
+    exact position. Flags a station as 'approaching' when
+    storm-intensity echo is within APPROACHING_RADIUS_MI but that
+    station's own instrument hasn't reported a thunderstorm yet --
+    radar can see a cell coming before a point sensor does, which is
+    real lead time, not a forecast. Only meaningful once there's
+    already a real storm signal, so callers should skip this on quiet
+    cycles rather than pay for the extra METAR fetch every time."""
+    obs = metar.fetch_corridor_conditions()
+    if not obs:
+        return []
+
+    storm_gates_by_site = {}
+    for site, (lats, lons, refl) in site_data.items():
+        mask = refl >= STORM_DBZ
+        if mask.any():
+            storm_gates_by_site[site] = (lats[mask], lons[mask])
+    if not storm_gates_by_site:
+        return []
+
+    approaching = []
+    for ob in obs:
+        station = ob.get("station")
+        lat, lon = ob.get("lat"), ob.get("lon")
+        if not station or lat is None or lon is None:
+            continue
+        if "thunderstorm" in metar.classify_hazards(ob):
+            continue  # already reporting it directly -- nothing to predict
+        best_dist_mi = None
+        for site_lats, site_lons in storm_gates_by_site.values():
+            dist_mi = (np.sqrt((site_lats - lat) ** 2 + (site_lons - lon) ** 2)).min() * 69
+            if best_dist_mi is None or dist_mi < best_dist_mi:
+                best_dist_mi = dist_mi
+        if best_dist_mi is not None and best_dist_mi <= APPROACHING_RADIUS_MI:
+            name = metar.CORRIDOR_STATIONS.get(station, station)
+            approaching.append((station, name, round(best_dist_mi, 1)))
+    return sorted(approaching, key=lambda a: a[2])
 
 
 def _http_get_bytes(url, timeout=20):
@@ -181,6 +224,13 @@ def fetch_radar_signal():
     if storm_gate_count < MIN_STORM_GATES:
         storm_cities = set()
 
+    approaching = []
+    if storm_cities:
+        try:
+            approaching = stations_approaching(site_data)
+        except Exception as e:
+            print(f"Station cross-reference failed this cycle (non-fatal): {e}")
+
     return {
         "checked": checked,
         "total_points": len(grid_points),
@@ -190,6 +240,7 @@ def fetch_radar_signal():
         "max_dbz": round(float(max_val), 1) if max_val is not None else None,
         "max_near": sx._nearest_city_label(*max_loc) if max_loc else None,
         "sites_used": sorted(site_data.keys()),
+        "approaching_stations": approaching,
     }
 
 
@@ -257,6 +308,11 @@ def build_radar_message(current, reasons, trend_line=None):
         near = f" near {current['max_near']}" if current.get("max_near") else ""
         lines.append(f"Max reflectivity: {current['max_dbz']} dBZ{near}")
     lines.append(f"Corridor coverage (>= {RAIN_DBZ} dBZ, any rain): {current['rain_coverage_pct']}%")
+    if current.get("approaching_stations"):
+        lines.append("")
+        lines.append("Radar sees it before these stations have reported it:")
+        for station, name, dist_mi in current["approaching_stations"]:
+            lines.append(f"- {name} ({station}) -- {dist_mi} mi away")
     lines.append(f"Radars used: {', '.join(current['sites_used'])}")
     return "\n".join(lines)
 
