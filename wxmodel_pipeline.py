@@ -379,6 +379,32 @@ SCAN_LONS = [-90, -80, -70, -60, -50, -40, -30, -20]
 SHORT_MEDIUM_LONG_HOURS = (0, 24, 48, 72, 96, 120, 168, 240, 336)
 
 
+def fetch_point_pressure(lat, lon, forecast_hour, model_param):
+    """Single-point deterministic MSLP lookup at an exact lat/lon/hour --
+    used to check what GFS/Euro/ICON each show at the specific location
+    the basin-wide ensemble scan flagged, so MAIN MODELS and SIDE NOTES
+    are always talking about the same spot instead of two independently
+    scanned 'lowest point anywhere' answers that can legitimately land
+    in different places."""
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}&hourly=pressure_msl"
+        f"&models={model_param}&forecast_days=15&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, f"PointPressure:{model_param}")
+    if not data:
+        return None
+    try:
+        parsed = json.loads(data.decode("utf-8"))
+        vals = parsed.get("hourly", {}).get("pressure_msl", [])
+        if forecast_hour < len(vals) and vals[forecast_hour] is not None:
+            return round(vals[forecast_hour], 1)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        pass
+    return None
+
+
 def fetch_model_grid(model_endpoint, forecast_hours=SHORT_MEDIUM_LONG_HOURS, models_param=None, label=None, forecast_days=15):
     """Queries an Open-Meteo forecast endpoint (GFS, ECMWF, or ECMWF
     with a specific models= override like AIFS) for pressure_msl and
@@ -1171,11 +1197,11 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     else:
         summary_lines.append("- Rainfall (SETX/SWLA): mostly dry, nothing significant expected")
 
+    front_when = f" ({front_signal['dewpoint_drop_time']})" if front_signal and front_signal.get("dewpoint_drop_time") else ""
     if front_signal and front_signal.get("front_signal"):
-        when = f" ({front_signal['dewpoint_drop_time']})" if front_signal.get("dewpoint_drop_time") else ""
-        summary_lines.append(f"- Front: signs of a real front moving through{when}")
+        summary_lines.append(f"- Front: signs of a real front moving through{front_when}")
     elif afd_front_mentions:
-        summary_lines.append("- Front: NWS forecast discussion mentions one, models not fully agreeing yet")
+        summary_lines.append(f"- Front: NWS mentions one{front_when}, models not fully agreeing yet -- see FRONT WATCH below")
     else:
         summary_lines.append("- Front: none indicated this cycle")
 
@@ -1220,21 +1246,23 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
                 lines.append(f"  {r['wpc_note']}")
 
     lines.append("")
-    lines.append("<b>\U0001F300 MAIN MODELS</b> (background reference, not a signal by itself)")
-    for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
-        if scan and scan.get("results"):
-            best = min(scan["results"], key=lambda r: r["mslp_mb"])
-            region = classify_region(best["lat"], best["lon"])
-            wind_str = f", {best['wind_mph']} mph" if best.get("wind_mph") is not None else ""
-            lines.append(f"- {label}: {best['mslp_mb']} mb near {region} (around {_fh_to_date_label(best['fh'])}{wind_str})")
-            # NOTE: raw deterministic MSLP dipping below a threshold
-            # somewhere across a wide multi-day grid is normal
-            # background noise on its own -- per instruction, this must
-            # NOT drive the tropical-development summary by itself.
-            # Only genuine ensemble agreement or an explicit NHC
-            # formation percentage does that (see below).
-        else:
-            lines.append(f"- {label}: data unavailable this cycle")
+    lines.append("<b>\U0001F300 MAIN MODELS</b>")
+    if ensemble_hits:
+        # Check GFS/Euro/ICON at the EXACT spot the ensemble scan flagged
+        # below, instead of each model's own single lowest point anywhere
+        # in a huge 15-day domain (an older approach that routinely
+        # pointed at a totally different place, like the Gulf of Mexico
+        # or open Atlantic -- real, but not the same location SIDE NOTES
+        # was talking about, which just read as contradictory).
+        top_model_name, top, _ = min(ensemble_hits, key=lambda mt: mt[1]["anomaly"])
+        for label, model_param in (("GFS", "gfs_seamless"), ("Euro", "ecmwf_ifs025"), ("ICON", "icon_seamless")):
+            val = fetch_point_pressure(top["lat"], top["lon"], top["fh"], model_param)
+            if val is not None:
+                lines.append(f"- {label}: {val} mb near {top['region']} (same spot as SIDE NOTES, around {_fh_to_date_label(top['fh'])})")
+            else:
+                lines.append(f"- {label}: data unavailable this cycle")
+    else:
+        lines.append("- No flagged location this cycle -- nothing specific for GFS/Euro/ICON to check against.")
 
     lines.append("")
     lines.append("<b>\U0001F4CA SIDE NOTES</b>")
