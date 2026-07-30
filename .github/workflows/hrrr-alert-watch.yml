@@ -1,16 +1,25 @@
-name: HRRR Alert Watch
+name: HRRR Alert Watch (Continuous)
 
 on:
   schedule:
-    - cron: "5,35 * * * *"
+    # Safety net only -- fires every 6h in case the self-restart chain ever
+    # breaks. Under normal operation the loop keeps itself running
+    # continuously and this trigger does nothing (see concurrency block).
+    - cron: "20 */6 * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
+  actions: write
+
+concurrency:
+  group: hrrr-alert-watch
+  cancel-in-progress: false
 
 jobs:
-  run:
+  poll:
     runs-on: ubuntu-latest
+    timeout-minutes: 355
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -20,18 +29,19 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run HRRR alert pipeline
+      - name: Run continuous HRRR alert polling loop
         env:
           WXMODEL_TELEGRAM_BOT_TOKEN: ${{ secrets.WXMODEL_TELEGRAM_BOT_TOKEN }}
           WXMODEL_TELEGRAM_CHAT_ID: ${{ secrets.WXMODEL_TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PYTHONUNBUFFERED: "1"
-        run: python -u hrrr_alert_pipeline.py
+        run: python -u hrrr_alert_fast_loop.py
 
-      - name: Commit updated state
+      - name: Final state commit (safety net)
+        if: always()
         run: |
           git config user.name "hrrr-alert-watch-bot"
           git config user.email "actions@users.noreply.github.com"
           git add hrrr_alert_state.json
           git diff --quiet --cached || git commit -m "Update HRRR alert state [skip ci]"
-          git pull --rebase --autostash || true
-          git push
+          git push || true

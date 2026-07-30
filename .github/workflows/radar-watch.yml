@@ -1,16 +1,25 @@
-name: Radar Watch (real NEXRAD observations)
+name: Radar Watch (Continuous)
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    # Safety net only -- fires every 6h in case the self-restart chain ever
+    # breaks. Under normal operation the loop keeps itself running
+    # continuously and this trigger does nothing (see concurrency block).
+    - cron: "30 */6 * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
+  actions: write
+
+concurrency:
+  group: radar-watch
+  cancel-in-progress: false
 
 jobs:
-  run:
+  poll:
     runs-on: ubuntu-latest
+    timeout-minutes: 355
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -23,18 +32,19 @@ jobs:
       - name: Install dependencies
         run: pip install arm_pyart numpy --break-system-packages
 
-      - name: Run radar watch pipeline
+      - name: Run continuous radar watch polling loop
         env:
           NWS_TELEGRAM_BOT_TOKEN: ${{ secrets.NWS_TELEGRAM_BOT_TOKEN }}
           NWS_TELEGRAM_CHAT_ID: ${{ secrets.NWS_TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PYTHONUNBUFFERED: "1"
-        run: python -u radar_watch_pipeline.py
+        run: python -u radar_watch_fast_loop.py
 
-      - name: Commit updated state
+      - name: Final state commit (safety net)
+        if: always()
         run: |
           git config user.name "radar-watch-bot"
           git config user.email "actions@users.noreply.github.com"
           git add radar_watch_state.json
           git diff --quiet --cached || git commit -m "Update radar watch state [skip ci]"
-          git pull --rebase --autostash || true
-          git push
+          git push || true
