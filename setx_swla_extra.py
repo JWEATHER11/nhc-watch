@@ -319,20 +319,6 @@ DEWPOINT_DROP_THRESHOLD_F = 15.0
 TEMP_DROP_THRESHOLD_F = 8.0
 NORTHERLY_MIN_DEG = 315
 NORTHERLY_MAX_DEG = 45
-
-
-def _c_to_f(c):
-    return c * 9 / 5 + 32
-
-
-def _is_northerly(deg):
-    return deg >= NORTHERLY_MIN_DEG or deg <= NORTHERLY_MAX_DEG
-
-
-DEWPOINT_DROP_THRESHOLD_F = 15.0
-TEMP_DROP_THRESHOLD_F = 8.0
-NORTHERLY_MIN_DEG = 315
-NORTHERLY_MAX_DEG = 45
 # A front should show up across MOST of the region, not just one
 # model blip at one point -- per instruction, requires at least this
 # fraction of the corridor points to agree before flagging anything.
