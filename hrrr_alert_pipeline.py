@@ -111,13 +111,40 @@ def fetch_hrrr_alert_signal():
             onset_hour_idx = h
             break
 
+    # Peak gust at each point (across the whole forecast window), then
+    # only trust the single highest one if at least one neighboring
+    # grid point also shows a meaningfully elevated peak -- same
+    # "don't trust an isolated grid cell" fix applied to
+    # fetch_hrrr_grid_detail's precip max after a lone artifact spike
+    # (109mm/4.3in at one cell, 0 at every neighbor) triggered a false
+    # alert. See radar_prototype/NOTES.md and setx_swla_extra.py's
+    # _has_neighbor_support for the same reasoning.
+    peak_gust_grid = {}
+    for idx, point in enumerate(points):
+        gusts = [g for g in point.get("hourly", {}).get("wind_gusts_10m", []) if g is not None]
+        if gusts:
+            row, col = idx // sx.HRRR_GRID_COLS, idx % sx.HRRR_GRID_COLS
+            peak_gust_grid[(row, col)] = max(gusts)
+
+    def _gust_has_neighbor_support(row, col, value):
+        if value < 35.0:
+            return True
+        neighbor_vals = [
+            peak_gust_grid[(row + dr, col + dc)]
+            for dr in (-1, 0, 1)
+            for dc in (-1, 0, 1)
+            if (dr, dc) != (0, 0) and (row + dr, col + dc) in peak_gust_grid
+        ]
+        if not neighbor_vals:
+            return True
+        return max(neighbor_vals) >= max(15.0, value * 0.5)
+
     max_gust, max_gust_near = 0.0, None
-    for point, (glat, glon) in zip(points, grid_points):
-        gusts = point.get("hourly", {}).get("wind_gusts_10m", [])
-        for g in gusts:
-            if g is not None and g > max_gust:
-                max_gust = g
-                max_gust_near = sx._nearest_city_label(glat, glon)
+    for (row, col), peak in peak_gust_grid.items():
+        if peak > max_gust and _gust_has_neighbor_support(row, col, peak):
+            max_gust = peak
+            glat, glon = grid_points[row * sx.HRRR_GRID_COLS + col]
+            max_gust_near = sx._nearest_city_label(glat, glon)
 
     onset_hour_str = None
     if onset_hour_idx is not None and onset_hour_idx < len(hours):
