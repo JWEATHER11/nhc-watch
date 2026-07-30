@@ -209,68 +209,100 @@ def telegram_configured():
     return bool(os.environ.get("SPC_TELEGRAM_BOT_TOKEN")) and bool(os.environ.get("SPC_TELEGRAM_CHAT_ID"))
 
 
+def _telegram_chat_ids():
+    """Every chat this bot delivers to -- the original chat, plus any
+    additional destinations configured via SPC_TELEGRAM_CHAT_ID_2, _3,
+    etc. Same convention as wxmodel_pipeline.py's multi-chat support."""
+    ids = [os.environ["SPC_TELEGRAM_CHAT_ID"]]
+    i = 2
+    while True:
+        extra = os.environ.get(f"SPC_TELEGRAM_CHAT_ID_{i}")
+        if not extra:
+            break
+        ids.append(extra)
+        i += 1
+    return ids
+
+
 def send_telegram(text):
     bot_token = os.environ["SPC_TELEGRAM_BOT_TOKEN"]
-    chat_id = os.environ["SPC_TELEGRAM_CHAT_ID"]
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = json.dumps({"chat_id": chat_id, "text": text}).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    last_err = None
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                if result.get("ok"):
-                    return
-                last_err = result.get("description", "Unknown Telegram error")
-        except Exception as e:
-            last_err = str(e)
-        print(f"[Telegram] Attempt {attempt} failed: {last_err}")
-        if attempt < MAX_ATTEMPTS:
-            time.sleep(RETRY_DELAY_SEC)
-    raise RuntimeError(f"Telegram send failed after {MAX_ATTEMPTS} attempts: {last_err}")
+    chat_ids = _telegram_chat_ids()
+    chat_errors = {}
+    for chat_id in chat_ids:
+        payload = json.dumps({"chat_id": chat_id, "text": text}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        last_err = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    if result.get("ok"):
+                        last_err = None
+                        break
+                    last_err = result.get("description", "Unknown Telegram error")
+            except Exception as e:
+                last_err = str(e)
+            print(f"[Telegram] Attempt {attempt} to {chat_id} failed: {last_err}")
+            if attempt < MAX_ATTEMPTS:
+                time.sleep(RETRY_DELAY_SEC)
+        if last_err:
+            chat_errors[chat_id] = last_err
+    if len(chat_errors) == len(chat_ids):
+        raise RuntimeError(f"Telegram send failed to ALL configured chats: {chat_errors}")
 
 
 def send_telegram_photo(photo_url, caption=""):
     """Downloads the image ourselves and uploads the bytes directly to
     Telegram (multipart/form-data) -- more reliable than passing the URL
     for Telegram to fetch itself, which can fail with "wrong type of the
-    web page content" if Telegram's fetcher doesn't like the response."""
+    web page content" if Telegram's fetcher doesn't like the response.
+    Downloads once, then uploads to every configured chat (see
+    _telegram_chat_ids) so a multi-chat setup doesn't re-fetch the same
+    image per destination."""
     bot_token = os.environ["SPC_TELEGRAM_BOT_TOKEN"]
-    chat_id = os.environ["SPC_TELEGRAM_CHAT_ID"]
     url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-    last_err = None
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        try:
-            image_req = urllib.request.Request(photo_url, headers={"User-Agent": "spc-outlook-pipeline/1.0"})
-            with urllib.request.urlopen(image_req, timeout=20) as img_resp:
-                image_bytes = img_resp.read()
 
-            boundary = "----spcPhotoBoundary"
-            parts = [
-                f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode("utf-8"),
-                f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{caption[:1024]}\r\n".encode("utf-8"),
-                f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"graphic.png\"\r\nContent-Type: image/png\r\n\r\n".encode("utf-8"),
-                image_bytes,
-                f"\r\n--{boundary}--\r\n".encode("utf-8"),
-            ]
-            body = b"".join(parts)
-            req = urllib.request.Request(
-                url, data=body,
-                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                if result.get("ok"):
-                    return
-                last_err = result.get("description", "Unknown Telegram error")
-        except Exception as e:
-            last_err = str(e)
-        print(f"[Telegram photo] Attempt {attempt} failed: {last_err}")
-        if attempt < MAX_ATTEMPTS:
-            time.sleep(RETRY_DELAY_SEC)
-    print(f"Graphic send failed after {MAX_ATTEMPTS} attempts (non-fatal, text still sends): {last_err}")
+    try:
+        image_req = urllib.request.Request(photo_url, headers={"User-Agent": "spc-outlook-pipeline/1.0"})
+        with urllib.request.urlopen(image_req, timeout=20) as img_resp:
+            image_bytes = img_resp.read()
+    except Exception as e:
+        print(f"Graphic download failed (non-fatal, text still sends): {e}")
+        return
+
+    boundary = "----spcPhotoBoundary"
+
+    for chat_id in _telegram_chat_ids():
+        parts = [
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode("utf-8"),
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{caption[:1024]}\r\n".encode("utf-8"),
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"graphic.png\"\r\nContent-Type: image/png\r\n\r\n".encode("utf-8"),
+            image_bytes,
+            f"\r\n--{boundary}--\r\n".encode("utf-8"),
+        ]
+        body = b"".join(parts)
+        last_err = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                req = urllib.request.Request(
+                    url, data=body,
+                    headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    if result.get("ok"):
+                        last_err = None
+                        break
+                    last_err = result.get("description", "Unknown Telegram error")
+            except Exception as e:
+                last_err = str(e)
+            print(f"[Telegram photo] Attempt {attempt} to {chat_id} failed: {last_err}")
+            if attempt < MAX_ATTEMPTS:
+                time.sleep(RETRY_DELAY_SEC)
+        if last_err:
+            print(f"Graphic send to {chat_id} failed after {MAX_ATTEMPTS} attempts (non-fatal, text still sends): {last_err}")
 
 
 def send_email_sms_fallback(text, subject="SPC Outlook Update"):
