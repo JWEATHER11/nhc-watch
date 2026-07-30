@@ -1,0 +1,53 @@
+name: CI Failure Notify
+
+# Every pipeline already catches its own runtime exceptions and sends
+# a Telegram failure alert -- but a job that fails BEFORE the Python
+# code even runs (checkout, dependency install, a bad push) doesn't go
+# through that code path at all, so it fails completely silently.
+# This is the one place that watches for that: it fires whenever any
+# of the always-on watch workflows finishes with conclusion=failure,
+# regardless of why, and sends a single Telegram alert with a link to
+# the failed run. One-off test/practice workflows are deliberately
+# left out -- their failures aren't operationally urgent.
+
+on:
+  workflow_run:
+    workflows:
+      - "NHC HDOB Watch"
+      - "NHC Fast Watch (Continuous)"
+      - "METAR Real Storm Watch"
+      - "HRRR Alert Watch"
+      - "NHC Recon Fast Watch (Continuous)"
+      - "NHC Pipeline (IEM + Claude Rewrite)"
+      - "NHC Outlook Watch"
+      - "NHC Outlook Fast Watch (Continuous)"
+      - "NWS AFD Fast Watch (Continuous)"
+      - "NHC Storm Watch"
+      - "NHC Recon Watch"
+      - "NHC Recon Pipeline"
+      - "Radar Watch (real NEXRAD observations)"
+      - "NWS Warnings Fast Watch (Continuous)"
+      - "SPC Fast Watch (Continuous)"
+      - "SPC Outlook Watch"
+      - "WPC ERO Fast Watch (Continuous)"
+      - "WX Model Data Fast Watch (Continuous)"
+    types:
+      - completed
+
+jobs:
+  notify:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram alert
+        env:
+          NWS_TELEGRAM_BOT_TOKEN: ${{ secrets.NWS_TELEGRAM_BOT_TOKEN }}
+          NWS_TELEGRAM_CHAT_ID: ${{ secrets.NWS_TELEGRAM_CHAT_ID }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          MESSAGE="⚠️ GitHub Actions job failed (before/outside the pipeline's own error handling): ${WORKFLOW_NAME}
+          ${RUN_URL}"
+          curl -s -X POST "https://api.telegram.org/bot${NWS_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${NWS_TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}"
