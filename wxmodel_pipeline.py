@@ -513,131 +513,413 @@ def process_model_scan(model_key, model_endpoint, model_name, state):
     save_state(state)
 
 
-# Representative center-points spanning the whole basin -- widened
-# 2026-07-30 after a direct miss: Google Weather Lab's own map showed
-# multiple real tracked disturbance points (SE US coast, north-central
-# Caribbean near Puerto Rico, subtropical Atlantic near Bermuda) that
-# fell nowhere near the original 3 fixed points, so this system
-# reported "no signal" while Google's own site was clearly showing
-# something. Each point is one separate, independent request (not
-# batched), so widening this doesn't multiply payload size the way a
-# single dense-grid request would -- it just adds more small requests.
-# Each entry is (lat, lon, region, threshold_mb). threshold_mb is None
-# for the deep-tropics points (they use the shared DISTURBANCE_THRESHOLD_MB
-# below); the higher-latitude/subtropical points carry their own, higher
-# threshold -- typical background pressure runs meaningfully higher at
-# 35N than at 15N, so a fixed tropical-belt threshold would never fire
-# there even for a genuinely anomalous system. Each point's threshold
-# is set to roughly the same depth-below-background as the tropical
-# default (~5-7mb under typical conditions for that latitude), not an
-# arbitrary number.
-ENSEMBLE_CHECK_POINTS = [
-    (25.0, -90.0, "Gulf of Mexico", None),
-    (28.0, -78.0, "SE US Coast / Bahamas", None),
-    (20.0, -85.0, "NW Caribbean / Yucatan", None),
-    (15.0, -72.0, "Central Caribbean", None),
-    (18.5, -65.0, "NE Caribbean / Puerto Rico", None),
-    (30.0, -65.0, "Subtropical Atlantic / Bermuda", None),
-    (13.0, -60.0, "Lesser Antilles", None),
-    (15.0, -50.0, "Central Tropical Atlantic", None),
-    (15.0, -45.0, "Open Tropical Atlantic", None),
-    (12.0, -30.0, "Eastern MDR / Cabo Verde", None),
-    # Added 2026-07-30 after a second, more serious miss: GFS/ECMWF/
-    # Google AI all showed a real, multi-model-agreed developing low
-    # (deterministic runs ~1015-1017mb here, vs. a normal ~1020-1024mb
-    # background -- a real anomaly, just not deep enough to cross the
-    # tropical belt's 1008mb bar) centered north of 37N -- entirely
-    # outside every point above (the northernmost, Bermuda, sits at
-    # 30N). Per instruction, anything north of ~35-40N isn't of real
-    # interest here (it's baroclinic/extratropical, not a Gulf Coast
-    # threat), so these two stay just inside that boundary rather than
-    # chasing the system's full northward extent.
-    (35.0, -75.0, "Off Carolinas", 1016),
-    (36.0, -68.0, "Western Subtropical Atlantic", 1016),
-]
+# Dense basin-wide grid for genuine local-minimum detection -- replaces
+# the old fixed-checkpoint-list approach entirely (2026-07-30) after two
+# real misses in one session: a fixed absolute pressure threshold can't
+# work consistently across the whole basin (normal background pressure
+# differs meaningfully by latitude), and any short list of "likely"
+# points will always miss whatever forms somewhere else -- which is
+# exactly what happened (Google Weather Lab, then separately GFS/ECMWF/
+# Google AI all showing a real developing low with nothing in this
+# system's checkpoint list anywhere near it). This checks for an actual
+# local minimum -- a point meaningfully lower than its own immediate
+# neighbors, the same thing your eye does looking at an MSLP map -- so
+# it works the same way anywhere in the domain without a per-region
+# magic number. Confirmed live: a 70-point batched request completes in
+# ~1.3s, so this is cheap enough to run every cycle. Capped at 34N per
+# instruction -- north of ~35-40N is baroclinic/extratropical, not a
+# Gulf Coast threat.
+BASIN_GRID_LATS = [10, 14, 18, 22, 26, 30, 34]
+BASIN_GRID_LONS = [-95, -87, -79, -71, -63, -55, -47, -39, -31, -23]
+BASIN_SCAN_HOURS = list(range(24, 337, 24))  # every 24h out through day 14
+LOCAL_MIN_ANOMALY_MB = 3.0  # how much lower than the surrounding neighbors counts as real
+BASIN_SCAN_MODELS = {
+    "GFS": "gfs_seamless",
+    "ECMWF": "ecmwf_ifs025",
+    "ICON": "icon_seamless",
+}
+MAX_BASIN_CANDIDATES = 5  # cap how many distinct systems get the full (expensive) corroboration workup
 
-# Google WeatherNext (Google DeepMind's AI model, GraphCast-based) is
-# listed first and checked most closely -- it's a genuinely strong,
-# modern data source and per instruction gets emphasis over the older
-# physics-based ensembles, not just a passing mention.
+
+def _basin_grid_points():
+    return [(la, lo) for la in BASIN_GRID_LATS for lo in BASIN_GRID_LONS]
+
+
+def fetch_basin_grid(model_param):
+    """One batched request covering the whole basin grid -- fast and
+    small because it's a single deterministic run, not an ensemble
+    (the same density via the ensemble endpoint took 59s/11.7MB in
+    testing, unusable for a routine check)."""
+    points = _basin_grid_points()
+    lat_str = ",".join(str(p[0]) for p in points)
+    lon_str = ",".join(str(p[1]) for p in points)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat_str}&longitude={lon_str}&hourly=pressure_msl"
+        f"&models={model_param}&forecast_days=15&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, f"BasinGrid:{model_param}")
+    if not data:
+        return None
+    try:
+        parsed = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(parsed, list) or len(parsed) != len(points):
+        return None
+    return parsed
+
+
+def find_local_minima(grid_data):
+    """Real local-minimum detection: each grid point is compared to its
+    own immediate neighbors at the same forecast hour, not a fixed
+    absolute threshold -- this is what actually distinguishes a genuine
+    closed low from ordinary background pressure, and it works
+    identically at 12N or 34N without a different number for each."""
+    points = _basin_grid_points()
+    n_lons = len(BASIN_GRID_LONS)
+    findings = []
+    for fh in BASIN_SCAN_HOURS:
+        grid_vals = {}
+        for idx in range(len(points)):
+            hourly = grid_data[idx].get("hourly", {})
+            press = hourly.get("pressure_msl", [])
+            if fh < len(press) and press[fh] is not None:
+                row, col = idx // n_lons, idx % n_lons
+                grid_vals[(row, col)] = press[fh]
+        for (row, col), val in grid_vals.items():
+            neighbors = [
+                grid_vals[(row + dr, col + dc)]
+                for dr in (-1, 0, 1) for dc in (-1, 0, 1)
+                if (dr, dc) != (0, 0) and (row + dr, col + dc) in grid_vals
+            ]
+            if len(neighbors) < 4:
+                continue
+            neighbor_avg = sum(neighbors) / len(neighbors)
+            anomaly = val - neighbor_avg
+            if anomaly <= -LOCAL_MIN_ANOMALY_MB:
+                lat, lon = BASIN_GRID_LATS[row], BASIN_GRID_LONS[col]
+                findings.append({
+                    "lat": lat, "lon": lon, "fh": fh,
+                    "pressure": round(val, 1), "neighbor_avg": round(neighbor_avg, 1),
+                    "anomaly": round(anomaly, 1),
+                })
+    return findings
+
+
+def _cluster_candidates(all_model_findings):
+    """all_model_findings: {model_label: [findings...]}. Groups nearby
+    findings (close in space and time) into single candidate systems,
+    keeping the deepest anomaly as representative and noting which
+    models agree -- multi-model agreement is much stronger evidence
+    than any one model's raw output. Caps at MAX_BASIN_CANDIDATES since
+    the expensive per-point corroboration checks below only make sense
+    for genuine standouts, not every grid cell that dips slightly below
+    its neighbors."""
+    flat = []
+    for model_label, findings in all_model_findings.items():
+        for f in findings:
+            flat.append({**f, "model": model_label})
+    flat.sort(key=lambda f: f["anomaly"])  # most negative (deepest) first
+
+    clusters = []
+    for f in flat:
+        placed = False
+        for c in clusters:
+            rep = c["representative"]
+            if abs(f["lat"] - rep["lat"]) <= 4 and abs(f["lon"] - rep["lon"]) <= 6 and abs(f["fh"] - rep["fh"]) <= 48:
+                c["models"].add(f["model"])
+                placed = True
+                break
+        if not placed:
+            clusters.append({"representative": f, "models": {f["model"]}})
+
+    clusters.sort(key=lambda c: c["representative"]["anomaly"])
+    return clusters[:MAX_BASIN_CANDIDATES]
+
+
+def _basin_region_label(lat, lon):
+    if 18 <= lat <= 31 and -98 <= lon <= -81:
+        return "Gulf of Mexico"
+    if 9 <= lat <= 22 and -85 <= lon <= -60:
+        return "Caribbean Sea"
+    if 26 <= lat <= 36 and -82 <= lon <= -65:
+        return "Off SE US Coast"
+    if 22 <= lat <= 36:
+        return "Subtropical Atlantic"
+    return "Open Tropical Atlantic"
+
+
+def fetch_disturbance_environment(lat, lon, forecast_hour, model_param="gfs_seamless"):
+    """For a candidate local-minimum, checks the environmental factors
+    a real forecaster actually weighs for tropical development
+    potential -- not just 'is pressure low here': 850mb vorticity (real
+    spin vs. just a broad low), vertical wind shear between 850mb and
+    200mb (high shear tears a developing system apart before it can
+    organize), 700mb relative humidity (dry air entrainment suppresses
+    development even with everything else favorable), and sea surface
+    temperature (needs roughly 26C/80F+ to sustain deep convection).
+    Only ever called for the handful of flagged candidates from
+    find_local_minima, never swept across the whole grid -- these are
+    meaningfully more expensive per-point checks than the basin scan."""
+    vorticity = fetch_relative_vorticity(lat, lon, forecast_hour, model_param)
+
+    shear_kt, rh_700 = None, None
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}"
+        f"&hourly=wind_speed_200hPa,wind_direction_200hPa,wind_speed_850hPa,wind_direction_850hPa,relative_humidity_700hPa"
+        f"&models={model_param}&forecast_days=15&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, "DisturbanceEnv")
+    if data:
+        try:
+            parsed = json.loads(data.decode("utf-8"))
+            hourly = parsed.get("hourly", {})
+
+            def _at(field):
+                vals = hourly.get(field, [])
+                return vals[forecast_hour] if forecast_hour < len(vals) else None
+
+            spd200, dir200 = _at("wind_speed_200hPa"), _at("wind_direction_200hPa")
+            spd850, dir850 = _at("wind_speed_850hPa"), _at("wind_direction_850hPa")
+            if None not in (spd200, dir200, spd850, dir850):
+                u200, v200 = _wind_to_uv(spd200, dir200)
+                u850, v850 = _wind_to_uv(spd850, dir850)
+                shear_kt = round(math.hypot(u200 - u850, v200 - v850) * 0.539957, 1)
+            rh_700 = _at("relative_humidity_700hPa")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+    sst_c = None
+    cache_buster2 = int(time.time())
+    sst_url = (
+        f"https://marine-api.open-meteo.com/v1/marine"
+        f"?latitude={lat}&longitude={lon}&hourly=sea_surface_temperature&forecast_days=15&_cb={cache_buster2}"
+    )
+    sst_data = _fetch_with_retries_bytes(sst_url, "DisturbanceSST")
+    if sst_data:
+        try:
+            sst_parsed = json.loads(sst_data.decode("utf-8"))
+            sst_vals = sst_parsed.get("hourly", {}).get("sea_surface_temperature", [])
+            if forecast_hour < len(sst_vals) and sst_vals[forecast_hour] is not None:
+                sst_c = round(sst_vals[forecast_hour], 1)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+    return {"vorticity": vorticity, "shear_kt": shear_kt, "rh_700": rh_700, "sst_c": sst_c}
+
+
+def _development_favorability(env):
+    """Plain-language rollup of the environmental factors, matching how
+    a forecaster talks through favorable/unfavorable conditions -- a
+    count of how many factors line up, not a single manufactured
+    verdict, since any one of these being missing shouldn't hide the
+    others."""
+    favorable, total = 0, 0
+    notes = []
+    if env.get("vorticity") is not None:
+        total += 1
+        if env["vorticity"] >= VORTICITY_NOTABLE_THRESHOLD:
+            favorable += 1
+            notes.append(f"real closed rotation (850mb vorticity {env['vorticity']})")
+        else:
+            notes.append(f"little/no real spin yet (850mb vorticity {env['vorticity']})")
+    if env.get("shear_kt") is not None:
+        total += 1
+        if env["shear_kt"] <= 20:
+            favorable += 1
+            notes.append(f"low shear ({env['shear_kt']} kt) -- favorable")
+        elif env["shear_kt"] <= 35:
+            notes.append(f"moderate shear ({env['shear_kt']} kt) -- marginal")
+        else:
+            notes.append(f"high shear ({env['shear_kt']} kt) -- unfavorable")
+    if env.get("rh_700") is not None:
+        total += 1
+        if env["rh_700"] >= 50:
+            favorable += 1
+            notes.append(f"adequate mid-level moisture ({env['rh_700']}% RH at 700mb)")
+        else:
+            notes.append(f"drier mid-levels ({env['rh_700']}% RH at 700mb) -- can suppress development")
+    if env.get("sst_c") is not None:
+        total += 1
+        sst_f = round(env["sst_c"] * 9 / 5 + 32, 1)
+        if env["sst_c"] >= 26:
+            favorable += 1
+            notes.append(f"warm enough water ({sst_f}F) to sustain convection")
+        else:
+            notes.append(f"water too cool ({sst_f}F) to sustain much development")
+    return favorable, total, notes
+
+
+_basin_scan_cache = []
+
+
+def get_basin_candidates():
+    """Runs the shared dense-grid local-minimum scan across GFS, ECMWF,
+    and ICON once per process and caches it -- each of the three
+    ensemble model callers below (google_ai/gefs/ecmwf_ens) reuses the
+    same candidates instead of re-scanning the whole basin three times.
+    Environmental corroboration (vorticity/shear/moisture/SST) is also
+    computed here, once per candidate, for the same reason."""
+    global _basin_scan_cache
+    if _basin_scan_cache:
+        return _basin_scan_cache
+
+    all_findings = {}
+    for label, model_param in BASIN_SCAN_MODELS.items():
+        grid = fetch_basin_grid(model_param)
+        all_findings[label] = find_local_minima(grid) if grid else []
+
+    clusters = _cluster_candidates(all_findings)
+    for c in clusters:
+        rep = c["representative"]
+        c["env"] = fetch_disturbance_environment(rep["lat"], rep["lon"], rep["fh"])
+        c["favorable"], c["total_factors"], c["env_notes"] = _development_favorability(c["env"])
+
+    _basin_scan_cache = clusters
+    return clusters
+
+
 ENSEMBLE_MODELS = {
     "google_ai": ("google_weathernext2_ensemble", "Google WeatherNext AI Ensemble"),
     "gefs": ("gfs_seamless", "GEFS (GFS Ensemble)"),
     "ecmwf_ens": ("ecmwf_ifs025_ensemble", "ECMWF Ensemble"),
 }
 
-DISTURBANCE_THRESHOLD_MB = 1008  # rough threshold suggesting a developing low
-# Short, medium, and long range checkpoints -- extends genesis checking
-# out through ~14 days instead of stopping at day 5, per instruction.
-GENESIS_CHECK_HOURS = (24, 72, 120, 168, 240, 336)
+DISTURBANCE_THRESHOLD_MB = 1008  # kept for INTERESTING_MSLP_THRESHOLD_MB below; no longer
+# used for detection itself -- see LOCAL_MIN_ANOMALY_MB and find_local_minima.
 
-# A handful of members dipping below the pressure threshold by chance is
-# normal background noise, not a real signal -- only count it as a
-# genuine "finding" once a meaningful share of the ensemble agrees.
-# Adjust this to make the system more or less sensitive.
-MIN_ENSEMBLE_AGREEMENT_PCT = 15
-
-# Google WeatherNext gets a longer look (its full ~15-day range) since
-# it's the priority model here; the older ensembles stay at the
-# standard 6-day check.
 GOOGLE_AI_FORECAST_DAYS = 15  # Google WeatherNext's actual max range
 DEFAULT_ENSEMBLE_FORECAST_DAYS = 15  # GEFS/ECMWF Ensemble also support out to ~15-16 days
 
 
 def fetch_ensemble_genesis_signal(model_key):
-    """Checks a handful of representative points across the domain for
-    how many ensemble members show a developing low (pressure below the
-    disturbance threshold) at several forecast hours -- a rough,
-    practical stand-in for full genesis-probability tracking, using only
-    free, no-key data. Only counts it as a real 'finding' once at least
-    MIN_ENSEMBLE_AGREEMENT_PCT of members agree -- a couple of members
-    dipping below the threshold by chance is normal noise, not signal.
-    Google WeatherNext gets a longer forecast window since it's the
-    priority model here, per instruction."""
+    """Checks this model's ensemble agreement specifically at the
+    candidate locations found by the shared basin-wide local-minimum
+    scan (get_basin_candidates) instead of a fixed checkpoint list --
+    see get_basin_candidates for why that changed. Each candidate
+    already carries its full environmental corroboration workup."""
     model_param, model_name = ENSEMBLE_MODELS[model_key]
     forecast_days = GOOGLE_AI_FORECAST_DAYS if model_key == "google_ai" else DEFAULT_ENSEMBLE_FORECAST_DAYS
-    findings = []
+    candidates = get_basin_candidates()
+    if not candidates:
+        return None
 
-    for lat, lon, region, point_threshold in ENSEMBLE_CHECK_POINTS:
-        threshold_mb = point_threshold if point_threshold is not None else DISTURBANCE_THRESHOLD_MB
+    findings = []
+    for cluster in candidates:
+        rep = cluster["representative"]
+        lat, lon, fh = rep["lat"], rep["lon"], rep["fh"]
+
         cache_buster = int(time.time())
         url = (
             f"https://ensemble-api.open-meteo.com/v1/ensemble"
             f"?latitude={lat}&longitude={lon}&hourly=pressure_msl"
             f"&models={model_param}&forecast_days={forecast_days}&_cb={cache_buster}"
         )
-        data = _fetch_with_retries_bytes(url, f"Ensemble:{model_key}:{region}")
-        if not data:
-            continue
-        try:
-            parsed = json.loads(data.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            continue
+        data = _fetch_with_retries_bytes(url, f"Ensemble:{model_key}:{lat},{lon}")
+        pct, total = 0, 0
+        if data:
+            try:
+                parsed = json.loads(data.decode("utf-8"))
+                hourly = parsed.get("hourly", {})
+                member_keys = [k for k in hourly if k.startswith("pressure_msl_member")]
+                if member_keys:
+                    below, cnt = 0, 0
+                    for mk in member_keys:
+                        series = hourly[mk]
+                        if fh < len(series) and series[fh] is not None:
+                            cnt += 1
+                            if series[fh] <= rep["neighbor_avg"] - LOCAL_MIN_ANOMALY_MB:
+                                below += 1
+                    if cnt:
+                        pct, total = round(100 * below / cnt), cnt
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
 
-        hourly = parsed.get("hourly", {})
-        member_keys = [k for k in hourly if k.startswith("pressure_msl_member")]
-        if not member_keys:
-            continue
-
-        for fh in GENESIS_CHECK_HOURS:
-            below_threshold = 0
-            total = 0
-            for mk in member_keys:
-                series = hourly[mk]
-                if fh >= len(series) or series[fh] is None:
-                    continue
-                total += 1
-                if series[fh] < threshold_mb:
-                    below_threshold += 1
-            if total == 0:
-                continue
-            pct = round(100 * below_threshold / total)
-            if pct >= MIN_ENSEMBLE_AGREEMENT_PCT:
-                findings.append({"region": region, "fh": fh, "pct": pct, "members": total, "lat": lat, "lon": lon, "threshold_mb": threshold_mb})
+        findings.append({
+            "region": _basin_region_label(lat, lon), "lat": lat, "lon": lon, "fh": fh,
+            "pct": pct, "members": total,
+            "pressure": rep["pressure"], "neighbor_avg": rep["neighbor_avg"], "anomaly": rep["anomaly"],
+            "models_agreeing": sorted(cluster["models"]),
+            "vorticity": cluster["env"].get("vorticity"),
+            "env_notes": cluster["env_notes"],
+            "favorable_factors": cluster["favorable"], "total_factors": cluster["total_factors"],
+        })
 
     if not findings:
         return None
     return {"model_name": model_name, "findings": findings}
+
+
+VORTICITY_GRID_OFFSET_DEG = 1.5  # spacing for the finite-difference neighbor points
+VORTICITY_NOTABLE_THRESHOLD = 8.0  # x10^-5 s^-1 -- modest but real organized spin,
+# well below a mature tropical cyclone core (which can show 30-85+) but clearly
+# above typical background shear/noise
+
+
+def _wind_to_uv(speed, direction_deg):
+    """Meteorological wind_direction is where the wind blows FROM, so the
+    velocity vector points the opposite way."""
+    rad = math.radians(direction_deg)
+    u = -speed * math.sin(rad)
+    v = -speed * math.cos(rad)
+    return u, v
+
+
+def fetch_relative_vorticity(lat, lon, forecast_hour, model_param="gfs_seamless"):
+    """Estimates 850mb relative vorticity at (lat, lon, forecast_hour) via
+    centered finite differences on wind_speed_850hPa/wind_direction_850hPa
+    at four neighboring points -- a real (if coarse) measure of whether
+    there's genuine closed cyclonic rotation here, not just a broad area
+    of lower pressure. Positive values in the Northern Hemisphere mean
+    counterclockwise (cyclonic) spin; a mature tropical cyclone core can
+    show values of 30-85+ (x10^-5 s^-1), ordinary background flow is
+    usually under ~5. Always checked against deterministic GFS regardless
+    of which ensemble flagged the pressure signal -- this is a corroboration
+    check, not itself an ensemble-agreement metric."""
+    offsets = {
+        "north": (lat + VORTICITY_GRID_OFFSET_DEG, lon),
+        "south": (lat - VORTICITY_GRID_OFFSET_DEG, lon),
+        "east": (lat, lon + VORTICITY_GRID_OFFSET_DEG),
+        "west": (lat, lon - VORTICITY_GRID_OFFSET_DEG),
+    }
+    lat_str = ",".join(str(p[0]) for p in offsets.values())
+    lon_str = ",".join(str(p[1]) for p in offsets.values())
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&hourly=wind_speed_850hPa,wind_direction_850hPa"
+        f"&models={model_param}&forecast_days=15&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, "Vorticity")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list) or len(points) != 4:
+        return None
+
+    uv = {}
+    for label, point in zip(offsets.keys(), points):
+        hourly = point.get("hourly", {})
+        speeds = hourly.get("wind_speed_850hPa", [])
+        dirs = hourly.get("wind_direction_850hPa", [])
+        if forecast_hour >= len(speeds) or speeds[forecast_hour] is None or dirs[forecast_hour] is None:
+            return None
+        uv[label] = _wind_to_uv(speeds[forecast_hour], dirs[forecast_hour])
+
+    dx_m = 2 * VORTICITY_GRID_OFFSET_DEG * 111000 * math.cos(math.radians(lat))
+    dy_m = 2 * VORTICITY_GRID_OFFSET_DEG * 111000
+    dv_dx = (uv["east"][1] - uv["west"][1]) / dx_m
+    du_dy = (uv["north"][0] - uv["south"][0]) / dy_m
+    vorticity = (dv_dx - du_dy) * 1e5  # scale to x10^-5 s^-1, matching the standard display convention
+    return round(vorticity, 1)
 
 
 def _ensemble_bearing(lat1, lon1, lat2, lon2):
@@ -657,27 +939,33 @@ def _ensemble_bearing(lat1, lon1, lat2, lon2):
 
 def build_ensemble_report(model_name, signal):
     lines = [f"{model_name} -- genesis signal check", ""]
-    findings = sorted(signal["findings"], key=lambda f: f["fh"])
+    findings = sorted(signal["findings"], key=lambda f: f["anomaly"])
     for f in findings:
+        agreement = f", {f['pct']}% of {f['members']} {model_name} members agree" if f["members"] else ""
         lines.append(
-            f"Hour {f['fh']}: {f['pct']}% of {f['members']} members show a "
-            f"developing low (<{f.get('threshold_mb', DISTURBANCE_THRESHOLD_MB)} mb) near {f['region']}"
+            f"{f['region']} (hour {f['fh']}): {f['pressure']} mb vs. {f['neighbor_avg']} mb "
+            f"surrounding average ({f['anomaly']:+.1f} mb anomaly){agreement}"
         )
+        if f.get("models_agreeing"):
+            lines.append(f"  Also flagged by: {', '.join(f['models_agreeing'])}")
+        for note in f.get("env_notes", []):
+            lines.append(f"  - {note}")
+        fav, tot = f.get("favorable_factors", 0), f.get("total_factors", 0)
+        if tot:
+            lines.append(f"  Development factors favorable: {fav}/{tot}")
+        lines.append("")
 
-    first, last = findings[0], findings[-1]
-    lines.append("")
-    if first["region"] == last["region"]:
-        lines.append(f"Signal stays near {first['region']} across the period checked (hour {first['fh']} through {last['fh']}).")
-    else:
-        compass = _ensemble_bearing(first["lat"], first["lon"], last["lat"], last["lon"])
-        lines.append(
-            f"Earliest signal near {first['region']} (hour {first['fh']}), "
-            f"later signal near {last['region']} (hour {last['fh']}) -- "
-            f"roughly {compass} of the earlier point, consistent with a system tracking that direction over time."
-        )
+    if len(findings) >= 2:
+        first, last = findings[0], findings[-1]
+        if first["region"] != last["region"]:
+            compass = _ensemble_bearing(first["lat"], first["lon"], last["lat"], last["lon"])
+            lines.append(
+                f"Deepest signal near {first['region']}, another near {last['region']} -- "
+                f"roughly {compass} of the first, worth watching whether these are the same system."
+            )
+            lines.append("")
 
-    lines.append("")
-    lines.append("Note: this is a rough ensemble-agreement signal at a handful of sample points across the basin, not a precise genesis probability map or real storm track, and not an official NHC designation.")
+    lines.append("Note: this is a real local pressure minimum + environmental check across a basin-wide grid, not a precise genesis probability map or an official NHC designation.")
     return "\n".join(lines)
 
 
@@ -870,7 +1158,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
                 for f in signal["findings"]:
                     lines.append(f"- {model_name}: {tier_label(f['pct'])} ({f['pct']}%) of members show a developing low near {f['region']} by hour {f['fh']}")
             else:
-                top = max(signal["findings"], key=lambda f: f["pct"])
+                top = min(signal["findings"], key=lambda f: f["anomaly"])
                 lines.append(f"- {model_name}: {tier_label(top['pct'])} ({top['pct']}%) of members show a developing low near {top['region']} by hour {top['fh']}")
             by_region = {}
             for f in signal["findings"]:
