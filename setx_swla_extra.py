@@ -276,11 +276,11 @@ def build_setx_swla_section(outlook):
         parts.append(f"GFS {outlook['short_gfs_in']}\"")
     lines.append("- " + (", ".join(parts) if parts else "data unavailable") + " across the Houston-Beaumont-Port Arthur-Jasper-Lake Charles corridor")
     lines.append(f"- Coverage: {_coverage_label(outlook['coverage_pct'])}")
-    if outlook.get("short_hrrr_in") is not None:
-        hrrr_cov = outlook.get("hrrr_coverage_word") or "coverage unclear"
-        lines.append(f"- HRRR (today + tomorrow): {outlook['short_hrrr_in']}\" possible, {hrrr_cov}")
-    else:
-        lines.append("- HRRR (today + tomorrow): data unavailable this cycle")
+    # HRRR detail is NOT repeated here -- the dense-grid HRRR note
+    # (build_hrrr_grid_note) gets appended right after this section in
+    # wxmodel_pipeline.py and already covers the same today+tomorrow
+    # average, plus coverage, isolated max, and place name, so a
+    # second cruder HRRR line here was pure duplication.
     lines.append("")
     lines.append("<b>Medium term</b> (3-5 days)")
     parts = []
@@ -742,7 +742,7 @@ def build_pattern_oneliner(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan
 def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan, temp_blend=None):
     if not details:
         return []
-    lines = ["", "<b>Temperature / Wind / Other</b>"]
+    lines = ["", "<b>\U0001F321️ Temperature / Wind / Other</b>"]
     if temp_blend and temp_blend.get("high_f") is not None:
         lines.append(f"- High {temp_blend['high_f']}F, low {temp_blend['low_f']}F (Houston-Beaumont-Lumberton-Silsbee blend)")
     elif details["today_high_f"] is not None or details["today_low_f"] is not None:
@@ -1376,7 +1376,7 @@ def fetch_seven_day_forecast(ndfd_totals=None):
 def build_seven_day_section(days):
     if not days or not any(days):
         return None
-    lines = ["", "<b>7-Day Forecast</b>"]
+    lines = ["", "<b>\U0001F4C5 7-Day Forecast</b>"]
     import datetime as _dt
     now_local = _dt.datetime.now(w.BEAUMONT_TZ)
     weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

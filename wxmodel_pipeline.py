@@ -655,11 +655,11 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M %p").replace(" 0", " ")
-    lines = ["<b>Model Watch</b> -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
+    lines = ["<b>\U0001F30E Model Watch</b> -- Beaumont time", f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})", ""]
 
     is_interesting = False
 
-    lines.append("<b>SETX/SWLA LOCAL RAINFALL OUTLOOK</b> (Houston to Lake Charles)")
+    lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
     import setx_swla_extra as _sx2
     lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
     try:
@@ -699,12 +699,12 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
 
     if rainfall_flags:
         lines.append("")
-        lines.append("<b>GULF COAST RAINFALL WATCH</b> (next 10 days)")
+        lines.append("<b>\U0001F30A GULF COAST RAINFALL WATCH</b> (next 10 days)")
         for model_name, r in rainfall_flags.items():
             lines.append(f"- {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
 
     lines.append("")
-    lines.append("<b>MAIN MODELS</b>")
+    lines.append("<b>\U0001F300 MAIN MODELS</b>")
     for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
         if scan and scan.get("results"):
             best = min(scan["results"], key=lambda r: r["mslp_mb"])
@@ -721,7 +721,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
             lines.append(f"- {label}: data unavailable this cycle")
 
     lines.append("")
-    lines.append("<b>SIDE NOTES</b>")
+    lines.append("<b>\U0001F4CA SIDE NOTES</b>")
     if aifs_scan and aifs_scan.get("results"):
         best = min(aifs_scan["results"], key=lambda r: r["mslp_mb"])
         region = classify_region(best["lat"], best["lon"])
@@ -755,15 +755,15 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     if ndfd_summary:
         lines.append("")
         if ndfd_changed:
-            lines.append("<b>NWS comparison</b> (brief): " + "; ".join(ndfd_summary))
+            lines.append("<b>\U0001F4CB NWS comparison</b> (brief): " + "; ".join(ndfd_summary))
         else:
-            lines.append("<b>NWS comparison</b>: No significant change from NWS Houston / Lake Charles.")
+            lines.append("<b>\U0001F4CB NWS comparison</b>: No significant change from NWS Houston / Lake Charles.")
 
     lines.append("")
     if is_interesting:
-        lines.append("<b>Summary:</b> Signals of possible tropical development noted above -- worth watching closely.")
+        lines.append("<b>\U0001F4DD Summary:</b> Signals of possible tropical development noted above -- worth watching closely.")
     else:
-        lines.append("<b>Summary:</b> Quiet. No significant tropical signals detected this cycle.")
+        lines.append("<b>\U0001F4DD Summary:</b> Quiet. No significant tropical signals detected this cycle.")
 
     lines.append("")
     lines.append("Expect updates roughly: 00Z ~2AM, 06Z ~8AM, 12Z ~2PM, 18Z ~8PM (Beaumont time)")
@@ -778,12 +778,20 @@ GULF_COAST_RAIN_POINTS = [
     (29.76, -95.37, "Houston, TX"),
     (30.08, -94.10, "Beaumont, TX"),
     (27.80, -97.40, "Corpus Christi, TX"),
+    (35.47, -97.52, "Oklahoma City, OK"),
     (29.95, -90.07, "New Orleans, LA"),
     (30.45, -91.19, "Baton Rouge, LA"),
+    (34.75, -92.29, "Little Rock, AR"),
+    (35.15, -90.05, "Memphis, TN"),
     (30.69, -88.04, "Mobile, AL"),
+    (32.30, -90.18, "Jackson, MS"),
     (30.42, -87.22, "Pensacola, FL"),
     (27.95, -82.46, "Tampa, FL"),
+    (30.33, -81.66, "Jacksonville, FL"),
     (25.76, -80.19, "Miami, FL"),
+    (32.08, -81.10, "Savannah, GA"),
+    (32.78, -79.93, "Charleston, SC"),
+    (36.85, -76.29, "Norfolk, VA"),
 ]
 
 HEAVY_RAIN_THRESHOLD_INCHES = 1.0
