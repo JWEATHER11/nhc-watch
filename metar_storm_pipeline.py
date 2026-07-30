@@ -18,7 +18,9 @@ issue SPECI reports on significant changes).
 Alerts only on a hazard NEWLY appearing at a station (not a repeat of
 an already-alerted, still-ongoing condition), per the same "don't
 send the same stuff over and over" principle applied to the AFD
-throttle earlier. Sent to the WXMODEL Telegram chat.
+throttle earlier. Sent to the NWS Telegram chat, alongside Houston
+and Lake Charles content -- this is real-observation/radar-adjacent
+work, kept separate from the model-based WXMODEL chat.
 """
 
 import json
@@ -127,12 +129,12 @@ def build_message(new_hazards_by_station):
 
 
 def telegram_configured():
-    return bool(os.environ.get("WXMODEL_TELEGRAM_BOT_TOKEN")) and bool(os.environ.get("WXMODEL_TELEGRAM_CHAT_ID"))
+    return bool(os.environ.get("NWS_TELEGRAM_BOT_TOKEN")) and bool(os.environ.get("NWS_TELEGRAM_CHAT_ID"))
 
 
 def send_telegram(text):
-    bot_token = os.environ["WXMODEL_TELEGRAM_BOT_TOKEN"]
-    chat_id = os.environ["WXMODEL_TELEGRAM_CHAT_ID"]
+    bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
+    chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
@@ -154,7 +156,7 @@ def send_telegram(text):
 def deliver(text):
     if not telegram_configured():
         print("Telegram not configured -- skipping.")
-        raise RuntimeError("WXMODEL Telegram not configured")
+        raise RuntimeError("NWS Telegram not configured")
     send_telegram(text)
 
 
