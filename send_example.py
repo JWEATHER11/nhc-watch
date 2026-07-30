@@ -11,7 +11,7 @@ for model_key in w.ENSEMBLE_MODELS:
 nhc_summary = w.fetch_nhc_outlook_summary()
 rainfall_flags = w.fetch_gulf_coast_rainfall()
 setx_swla_outlook = sx.fetch_setx_swla_rainfall_outlook()
-ndfd_summary = sx.fetch_ndfd_qpf_summary()
+ndfd_summary = sx.fetch_ndfd_qpf_totals()
 cycle_hour_utc = int(w.current_cycle_key().split("T")[1])
 message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary)
 print(message)
