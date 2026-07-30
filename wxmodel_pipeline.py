@@ -20,6 +20,7 @@ numbers).
 import gzip
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -512,13 +513,47 @@ def process_model_scan(model_key, model_endpoint, model_name, state):
     save_state(state)
 
 
-# A handful of representative center-points across the domain, used
-# for ensemble genesis-probability checking (kept small since ensemble
-# responses carry many members and get large fast).
+# Representative center-points spanning the whole basin -- widened
+# 2026-07-30 after a direct miss: Google Weather Lab's own map showed
+# multiple real tracked disturbance points (SE US coast, north-central
+# Caribbean near Puerto Rico, subtropical Atlantic near Bermuda) that
+# fell nowhere near the original 3 fixed points, so this system
+# reported "no signal" while Google's own site was clearly showing
+# something. Each point is one separate, independent request (not
+# batched), so widening this doesn't multiply payload size the way a
+# single dense-grid request would -- it just adds more small requests.
+# Each entry is (lat, lon, region, threshold_mb). threshold_mb is None
+# for the deep-tropics points (they use the shared DISTURBANCE_THRESHOLD_MB
+# below); the higher-latitude/subtropical points carry their own, higher
+# threshold -- typical background pressure runs meaningfully higher at
+# 35N than at 15N, so a fixed tropical-belt threshold would never fire
+# there even for a genuinely anomalous system. Each point's threshold
+# is set to roughly the same depth-below-background as the tropical
+# default (~5-7mb under typical conditions for that latitude), not an
+# arbitrary number.
 ENSEMBLE_CHECK_POINTS = [
-    (25.0, -90.0, "Gulf of Mexico"),
-    (15.0, -72.0, "Caribbean Sea"),
-    (15.0, -45.0, "Open Tropical Atlantic"),
+    (25.0, -90.0, "Gulf of Mexico", None),
+    (28.0, -78.0, "SE US Coast / Bahamas", None),
+    (20.0, -85.0, "NW Caribbean / Yucatan", None),
+    (15.0, -72.0, "Central Caribbean", None),
+    (18.5, -65.0, "NE Caribbean / Puerto Rico", None),
+    (30.0, -65.0, "Subtropical Atlantic / Bermuda", None),
+    (13.0, -60.0, "Lesser Antilles", None),
+    (15.0, -50.0, "Central Tropical Atlantic", None),
+    (15.0, -45.0, "Open Tropical Atlantic", None),
+    (12.0, -30.0, "Eastern MDR / Cabo Verde", None),
+    # Added 2026-07-30 after a second, more serious miss: GFS/ECMWF/
+    # Google AI all showed a real, multi-model-agreed developing low
+    # (deterministic runs ~1015-1017mb here, vs. a normal ~1020-1024mb
+    # background -- a real anomaly, just not deep enough to cross the
+    # tropical belt's 1008mb bar) centered north of 37N -- entirely
+    # outside every point above (the northernmost, Bermuda, sits at
+    # 30N). Per instruction, anything north of ~35-40N isn't of real
+    # interest here (it's baroclinic/extratropical, not a Gulf Coast
+    # threat), so these two stay just inside that boundary rather than
+    # chasing the system's full northward extent.
+    (35.0, -75.0, "Off Carolinas", 1016),
+    (36.0, -68.0, "Western Subtropical Atlantic", 1016),
 ]
 
 # Google WeatherNext (Google DeepMind's AI model, GraphCast-based) is
@@ -563,7 +598,8 @@ def fetch_ensemble_genesis_signal(model_key):
     forecast_days = GOOGLE_AI_FORECAST_DAYS if model_key == "google_ai" else DEFAULT_ENSEMBLE_FORECAST_DAYS
     findings = []
 
-    for lat, lon, region in ENSEMBLE_CHECK_POINTS:
+    for lat, lon, region, point_threshold in ENSEMBLE_CHECK_POINTS:
+        threshold_mb = point_threshold if point_threshold is not None else DISTURBANCE_THRESHOLD_MB
         cache_buster = int(time.time())
         url = (
             f"https://ensemble-api.open-meteo.com/v1/ensemble"
@@ -591,28 +627,57 @@ def fetch_ensemble_genesis_signal(model_key):
                 if fh >= len(series) or series[fh] is None:
                     continue
                 total += 1
-                if series[fh] < DISTURBANCE_THRESHOLD_MB:
+                if series[fh] < threshold_mb:
                     below_threshold += 1
             if total == 0:
                 continue
             pct = round(100 * below_threshold / total)
             if pct >= MIN_ENSEMBLE_AGREEMENT_PCT:
-                findings.append({"region": region, "fh": fh, "pct": pct, "members": total})
+                findings.append({"region": region, "fh": fh, "pct": pct, "members": total, "lat": lat, "lon": lon, "threshold_mb": threshold_mb})
 
     if not findings:
         return None
     return {"model_name": model_name, "findings": findings}
 
 
+def _ensemble_bearing(lat1, lon1, lat2, lon2):
+    """Same great-circle bearing math as check_storm.py's storm-movement
+    calc, reused here to give a genuine calculated direction between
+    where a genesis signal first shows up and where it later shows up --
+    not a guess, an actual bearing between the two flagged points."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dlmb = math.radians(lon2 - lon1)
+    y = math.sin(dlmb) * math.cos(p2)
+    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dlmb)
+    deg = (math.degrees(math.atan2(y, x)) + 360) % 360
+    dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+            "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    return dirs[round(deg / 22.5) % 16]
+
+
 def build_ensemble_report(model_name, signal):
     lines = [f"{model_name} -- genesis signal check", ""]
-    for f in signal["findings"]:
+    findings = sorted(signal["findings"], key=lambda f: f["fh"])
+    for f in findings:
         lines.append(
             f"Hour {f['fh']}: {f['pct']}% of {f['members']} members show a "
-            f"developing low (<{DISTURBANCE_THRESHOLD_MB} mb) near {f['region']}"
+            f"developing low (<{f.get('threshold_mb', DISTURBANCE_THRESHOLD_MB)} mb) near {f['region']}"
         )
+
+    first, last = findings[0], findings[-1]
     lines.append("")
-    lines.append("Note: this is a rough ensemble-agreement signal at a few sample points, not a precise genesis probability map, and not an official NHC designation.")
+    if first["region"] == last["region"]:
+        lines.append(f"Signal stays near {first['region']} across the period checked (hour {first['fh']} through {last['fh']}).")
+    else:
+        compass = _ensemble_bearing(first["lat"], first["lon"], last["lat"], last["lon"])
+        lines.append(
+            f"Earliest signal near {first['region']} (hour {first['fh']}), "
+            f"later signal near {last['region']} (hour {last['fh']}) -- "
+            f"roughly {compass} of the earlier point, consistent with a system tracking that direction over time."
+        )
+
+    lines.append("")
+    lines.append("Note: this is a rough ensemble-agreement signal at a handful of sample points across the basin, not a precise genesis probability map or real storm track, and not an official NHC designation.")
     return "\n".join(lines)
 
 
