@@ -646,21 +646,61 @@ def fetch_front_signal():
     }
 
 
-def build_front_signal_section(signal):
-    if not signal:
+AFD_FRONT_KEYWORDS = [
+    "COLD FRONT", "FRONTAL BOUNDARY", "BACKDOOR FRONT", "STATIONARY FRONT",
+    "FRONT WILL", "FRONT IS", "FRONT MOVES", "FRONT PUSHES", "FRONT SLIDES",
+    "APPROACHING FRONT", "WEAK FRONT", "DIFFUSE FRONT",
+]
+
+
+def fetch_afd_front_mention():
+    """Checks the latest NWS Houston/Lake Charles Area Forecast
+    Discussion for the forecaster's own mention of a front/boundary,
+    per instruction -- a human forecaster reading the full model
+    suite holistically can call a real but subtle summer front that
+    our narrow Euro-only numeric point-check doesn't cross threshold
+    on yet. Corroboration only, never a replacement for the numeric
+    check -- if the forecaster ISN'T calling one either, that's a
+    meaningful signal too."""
+    try:
+        import nws_afd_pipeline as _afd
+    except Exception as e:
+        print(f"[AFD front check] unavailable (non-fatal): {e}")
+        return None
+    mentions = []
+    for office_key, cfg in _afd.OFFICES.items():
+        try:
+            text, _source = _afd.fetch_afd(office_key)
+        except Exception:
+            continue
+        if not text:
+            continue
+        if any(kw in text.upper() for kw in AFD_FRONT_KEYWORDS):
+            mentions.append(cfg["label"])
+    return mentions or None
+
+
+def build_front_signal_section(signal, afd_front_mentions=None):
+    if not signal and not afd_front_mentions:
         return None
     lines = []
-    if signal["front_signal"]:
-        season_tag = " (summer-adjusted threshold)" if signal.get("season") == "summer" else ""
+    numeric_flagged = bool(signal and signal["front_signal"])
+    if numeric_flagged or afd_front_mentions:
+        season_tag = " (summer-adjusted threshold)" if signal and signal.get("season") == "summer" else ""
         lines.append(f"FRONT WATCH{season_tag}:")
-        dp_threshold_used = signal.get("dp_threshold_used", DEWPOINT_DROP_THRESHOLD_F)
-        if signal["dewpoint_drop_f"] >= dp_threshold_used:
-            when = f", {signal['dewpoint_drop_time']}" if signal.get("dewpoint_drop_time") else ""
-            lines.append(f"- Dewpoints dropping sharply and widely across the region -- up to {signal['dewpoint_drop_f']}F drop within 24h{when} ({signal.get('dewpoint_agreement_pct', 0)}% of corridor points agree)")
-        if signal["shift_to_north"]:
-            when = f" {signal['wind_shift_time']}" if signal.get("wind_shift_time") else ""
-            lines.append(f"- Winds shifting more out of the north across most of the region{when} -- front pushing through")
-    if signal["cooling_signal"]:
+        if signal:
+            dp_threshold_used = signal.get("dp_threshold_used", DEWPOINT_DROP_THRESHOLD_F)
+            if signal["dewpoint_drop_f"] >= dp_threshold_used:
+                when = f", {signal['dewpoint_drop_time']}" if signal.get("dewpoint_drop_time") else ""
+                lines.append(f"- Dewpoints dropping sharply and widely across the region -- up to {signal['dewpoint_drop_f']}F drop within 24h{when} ({signal.get('dewpoint_agreement_pct', 0)}% of corridor points agree)")
+            if signal["shift_to_north"]:
+                when = f" {signal['wind_shift_time']}" if signal.get("wind_shift_time") else ""
+                lines.append(f"- Winds shifting more out of the north across most of the region{when} -- front pushing through")
+            if not numeric_flagged and afd_front_mentions:
+                lines.append(f"- Model numbers alone not yet at full regional agreement (dewpoint {signal.get('dewpoint_agreement_pct', 0)}%, temp {signal.get('temp_agreement_pct', 0)}%) -- corroborated below by NWS's own discussion")
+        if afd_front_mentions:
+            lines.append(f"- NWS forecaster discussion also mentions a front: {', '.join(afd_front_mentions)}")
+    if signal and signal["cooling_signal"]:
         when = f", {signal['temp_drop_time']}" if signal.get("temp_drop_time") else ""
         lines.append(f"- Meaningful, widespread cooling signal (Euro): up to {signal['temp_drop_f']}F within 24h{when} across most of the corridor ({signal.get('temp_agreement_pct', 0)}% of corridor points agree)")
     return lines or None

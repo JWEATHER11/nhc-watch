@@ -729,7 +729,12 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         note = _sx2.build_temperature_gradient_note(temp_gradient)
         if note:
             lines.append(f"- {note}")
-    front_lines = _sx2.build_front_signal_section(front_signal)
+    try:
+        afd_front_mentions = _sx2.fetch_afd_front_mention()
+    except Exception as e:
+        print(f"[Combined cycle] AFD front check unavailable (non-fatal): {e}")
+        afd_front_mentions = None
+    front_lines = _sx2.build_front_signal_section(front_signal, afd_front_mentions)
     if front_lines:
         lines.append("")
         lines.extend(front_lines)
