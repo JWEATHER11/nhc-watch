@@ -453,6 +453,16 @@ def classify_region(lat, lon):
     return "Open Tropical Atlantic"
 
 
+def _fh_to_date_label(fh):
+    """Open-Meteo forecast hours count from '0:00 today' UTC, so this
+    converts a raw hour offset into an actual calendar date in Beaumont
+    time -- 'around Aug 7' means something at a glance, 'hour 192'
+    doesn't."""
+    base = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    target_local = (base + timedelta(hours=fh)).astimezone(BEAUMONT_TZ)
+    return target_local.strftime("%b %-d")
+
+
 def estimate_model_cycle(model_key):
     """Open-Meteo's forecast responses always start at '0:00 today'
     regardless of the actual model cycle used, so the exact init time
@@ -628,12 +638,20 @@ def _cluster_candidates(all_model_findings):
         placed = False
         for c in clusters:
             rep = c["representative"]
-            if abs(f["lat"] - rep["lat"]) <= 4 and abs(f["lon"] - rep["lon"]) <= 6 and abs(f["fh"] - rep["fh"]) <= 48:
+            # Same location, any forecast hour, is the same persistent system
+            # -- an earlier version only merged findings within 48h of each
+            # other, so the identical spot at hour 144/216/288 (a real,
+            # multi-day persistent signal) counted as three separate
+            # "candidates" instead of one, badly bloating the report.
+            if abs(f["lat"] - rep["lat"]) <= 4 and abs(f["lon"] - rep["lon"]) <= 6:
                 c["models"].add(f["model"])
+                c["hours"].add(f["fh"])
+                if f["anomaly"] < rep["anomaly"]:
+                    c["representative"] = f
                 placed = True
                 break
         if not placed:
-            clusters.append({"representative": f, "models": {f["model"]}})
+            clusters.append({"representative": f, "models": {f["model"]}, "hours": {f["fh"]}})
 
     clusters.sort(key=lambda c: c["representative"]["anomaly"])
     return clusters[:MAX_BASIN_CANDIDATES]
@@ -796,6 +814,34 @@ GOOGLE_AI_FORECAST_DAYS = 15  # Google WeatherNext's actual max range
 DEFAULT_ENSEMBLE_FORECAST_DAYS = 15  # GEFS/ECMWF Ensemble also support out to ~15-16 days
 
 
+GENESIS_TREND_HISTORY_LEN = 4  # same "last 4 runs" window as the front-signal trend tracker
+
+
+def _update_genesis_trend(ensemble_signals, state):
+    """Tracks which regions got flagged each cycle (across all three
+    ensemble models) so the report can note whether a signal keeps
+    showing up -- and appears to be building -- across the last few
+    runs, not just describe this one snapshot in isolation."""
+    current_regions = set()
+    for signal in ensemble_signals.values():
+        if signal and signal.get("findings"):
+            for f in signal["findings"]:
+                current_regions.add(f["region"])
+
+    history = state.get("genesis_trend_history", [])
+    notes = []
+    for region in sorted(current_regions):
+        appearances = sum(1 for past in history if region in past)
+        if appearances >= 2:
+            notes.append(f"{region}: showing up in {appearances + 1} of the last {len(history) + 1} runs -- persistent, may be trying to develop")
+        elif appearances == 1:
+            notes.append(f"{region}: showing again after last run -- worth watching if this keeps building")
+
+    history = [sorted(current_regions)] + history[:GENESIS_TREND_HISTORY_LEN - 1]
+    state["genesis_trend_history"] = history
+    return notes
+
+
 def fetch_ensemble_genesis_signal(model_key):
     """Checks this model's ensemble agreement specifically at the
     candidate locations found by the shared basin-wide local-minimum
@@ -841,6 +887,7 @@ def fetch_ensemble_genesis_signal(model_key):
 
         findings.append({
             "region": _basin_region_label(lat, lon), "lat": lat, "lon": lon, "fh": fh,
+            "hours": sorted(cluster["hours"]),
             "pct": pct, "members": total,
             "pressure": rep["pressure"], "neighbor_avg": rep["neighbor_avg"], "anomaly": rep["anomaly"],
             "models_agreeing": sorted(cluster["models"]),
@@ -1047,7 +1094,7 @@ def fetch_nhc_outlook_summary():
     return "; ".join(mentions[:6])
 
 
-def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None, line_signal=None, temp_gradient=None, ndfd_changed=True):
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None, line_signal=None, temp_gradient=None, ndfd_changed=True, genesis_trend_notes=None):
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M %p").replace(" 0", " ")
@@ -1132,7 +1179,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
             best = min(scan["results"], key=lambda r: r["mslp_mb"])
             region = classify_region(best["lat"], best["lon"])
             wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
-            lines.append(f"- {label}: lowest {best['mslp_mb']} mb near {region} by hour {best['fh']}{wind_str}")
+            lines.append(f"- {label}: lowest {best['mslp_mb']} mb near {region} around {_fh_to_date_label(best['fh'])}{wind_str}")
             # NOTE: raw deterministic MSLP dipping below a threshold
             # somewhere across a wide multi-day grid is normal
             # background noise on its own -- per instruction, this must
@@ -1148,31 +1195,28 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         best = min(aifs_scan["results"], key=lambda r: r["mslp_mb"])
         region = classify_region(best["lat"], best["lon"])
         wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
-        lines.append(f"- ECMWF AIFS (AI): lowest {best['mslp_mb']} mb near {region} by hour {best['fh']}{wind_str}")
+        lines.append(f"- ECMWF AIFS (AI): lowest {best['mslp_mb']} mb near {region} around {_fh_to_date_label(best['fh'])}{wind_str}")
     else:
         lines.append("- ECMWF AIFS (AI): data unavailable this cycle")
     for model_key, signal in ensemble_signals.items():
         _, model_name = ENSEMBLE_MODELS[model_key]
         if signal and signal.get("findings"):
-            if model_key == "google_ai":
-                for f in signal["findings"]:
-                    lines.append(f"- {model_name}: {tier_label(f['pct'])} ({f['pct']}%) of members show a developing low near {f['region']} by hour {f['fh']}")
-            else:
-                top = min(signal["findings"], key=lambda f: f["anomaly"])
-                lines.append(f"- {model_name}: {tier_label(top['pct'])} ({top['pct']}%) of members show a developing low near {top['region']} by hour {top['fh']}")
-            by_region = {}
-            for f in signal["findings"]:
-                by_region[f["region"]] = max(by_region.get(f["region"], 0), f["pct"])
-            if len(by_region) > 1:
-                split_str = ", ".join(f"{region} {pct}%" for region, pct in sorted(by_region.items(), key=lambda kv: -kv[1]))
-                lines.append(f"  Track split: {split_str}")
+            top = min(signal["findings"], key=lambda f: f["anomaly"])
+            date_label = _fh_to_date_label(top["fh"])
+            spin = " -- real spin" if (top.get("vorticity") or 0) >= VORTICITY_NOTABLE_THRESHOLD else ""
+            lines.append(f"- {model_name}: {tier_label(top['pct'])} of tropical development near {top['region']}, around {date_label}{spin}")
+            if len(signal["findings"]) > 1:
+                lines.append(f"  ({len(signal['findings']) - 1} other spot{'s' if len(signal['findings']) > 2 else ''} also flagged -- worth a look at the raw data)")
             is_interesting = True
         else:
-            lines.append(f"- {model_name}: no signal above threshold")
+            lines.append(f"- {model_name}: no signs of tropical development")
     nhc_line = nhc_summary or "unavailable this cycle"
     lines.append(f"- NHC: {nhc_line}")
     if nhc_summary and "percent" in nhc_summary:
         is_interesting = True
+    if genesis_trend_notes:
+        for note in genesis_trend_notes:
+            lines.append(f"- {note}")
 
     if ndfd_summary:
         lines.append("")
@@ -1377,6 +1421,7 @@ def process_combined_cycle(state):
     ensemble_signals = {}
     for model_key in ENSEMBLE_MODELS:
         ensemble_signals[model_key] = fetch_ensemble_genesis_signal(model_key)
+    genesis_trend_notes = _update_genesis_trend(ensemble_signals, state)
     nhc_summary = fetch_nhc_outlook_summary()
     rainfall_flags = fetch_gulf_coast_rainfall()
     import setx_swla_extra as _sx
@@ -1403,7 +1448,7 @@ def process_combined_cycle(state):
         ndfd_summary = None
 
     cycle_hour_utc = int(cycle_key.split("T")[1])
-    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed)
+    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed, genesis_trend_notes)
     try:
         deliver(message)
     except Exception as e:

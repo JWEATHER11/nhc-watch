@@ -8,6 +8,8 @@ aifs_scan = w.fetch_model_grid("ecmwf", models_param="ecmwf_aifs025_single", lab
 ensemble_signals = {}
 for model_key in w.ENSEMBLE_MODELS:
     ensemble_signals[model_key] = w.fetch_ensemble_genesis_signal(model_key)
+state = w.load_state()
+genesis_trend_notes = w._update_genesis_trend(ensemble_signals, state)
 nhc_summary = w.fetch_nhc_outlook_summary()
 rainfall_flags = w.fetch_gulf_coast_rainfall()
 setx_swla_outlook = sx.fetch_setx_swla_rainfall_outlook()
@@ -17,17 +19,7 @@ temp_gradient = sx.fetch_temperature_gradient()
 ndfd_totals = sx.fetch_ndfd_qpf_totals()
 _, ndfd_summary, _ = sx.describe_ndfd_change(ndfd_totals, None, 0)
 cycle_hour_utc = int(w.current_cycle_key().split("T")[1])
-message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient)
+message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, genesis_trend_notes=genesis_trend_notes)
 print(message)
 w.deliver(message)
-print("SENT (combined cycle report)")
-
-for model_key, signal in ensemble_signals.items():
-    if not signal or not signal.get("findings"):
-        print(f"[{model_key}] No genesis findings this cycle.")
-        continue
-    _, model_name = w.ENSEMBLE_MODELS[model_key]
-    detail = w.build_ensemble_report(model_name, signal)
-    print(detail)
-    w.deliver(detail)
-    print(f"SENT ({model_name} genesis detail)")
+print("SENT")
