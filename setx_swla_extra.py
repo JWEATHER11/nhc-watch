@@ -1394,31 +1394,57 @@ def fetch_hrrr_grid_detail():
         return None
 
     totals_in = []
-    max_total = 0.0
-    max_coords = None
-    hit_count = 0
-    for point, (glat, glon) in zip(points, grid_points):
+    grid_totals = {}
+    for idx, (point, (glat, glon)) in enumerate(zip(points, grid_points)):
         daily_mm = point.get("daily", {}).get("precipitation_sum", [])
         days = [v for v in daily_mm[:2] if v is not None]
         if not days:
             continue
         total_in = sum(days) / 25.4
         totals_in.append(total_in)
-        if total_in >= 2.5:
-            hit_count += 1
-        if total_in > max_total:
-            max_total = total_in
-            max_coords = (glat, glon)
+        row, col = idx // HRRR_GRID_COLS, idx % HRRR_GRID_COLS
+        grid_totals[(row, col)] = total_in
 
     if not totals_in:
         return None
 
+    def _has_neighbor_support(row, col, value):
+        """A lone 3km grid cell reading several inches while every
+        adjacent cell reads ~0 is a known HRRR artifact (a numerically
+        unstable single point), not a real storm -- real convection
+        shows at least partial signal in neighboring cells too. Only
+        checked for totals large enough to matter (below this, normal
+        small-scale variability isn't worth filtering)."""
+        if value < 1.0:
+            return True
+        neighbor_vals = [
+            grid_totals[(row + dr, col + dc)]
+            for dr in (-1, 0, 1)
+            for dc in (-1, 0, 1)
+            if (dr, dc) != (0, 0) and (row + dr, col + dc) in grid_totals
+        ]
+        if not neighbor_vals:
+            return True
+        return max(neighbor_vals) >= max(0.5, value * 0.25)
+
+    hit_count = 0
+    max_total = 0.0
+    max_coords = None
+    for (row, col), total_in in grid_totals.items():
+        if total_in >= 2.5 and _has_neighbor_support(row, col, total_in):
+            hit_count += 1
+        if total_in > max_total and _has_neighbor_support(row, col, total_in):
+            max_total = total_in
+            max_coords = grid_points[row * HRRR_GRID_COLS + col]
+
     avg_total = round(sum(totals_in) / len(totals_in), 1)
     coverage_pct = round(100 * hit_count / len(totals_in))
     max_label = _nearest_city_label(*max_coords) if max_coords else None
+    majority_under_in = _majority_threshold(totals_in)
 
     return {
         "avg_total_in": avg_total,
+        "majority_under_in": majority_under_in,
         "max_total_in": round(max_total, 1),
         "max_near": max_label,
         "coverage_pct": coverage_pct,
@@ -1427,12 +1453,27 @@ def fetch_hrrr_grid_detail():
     }
 
 
+_MAJORITY_THRESHOLD_BUCKETS = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 8.0]
+
+
+def _majority_threshold(totals_in, fraction=0.75):
+    """Smallest round number such that at least `fraction` of the grid
+    points fall at or under it -- gives 'most of the corridor sees under
+    X' rather than a single blended average that hides how uneven
+    corridor-wide rain totals actually are."""
+    n = len(totals_in)
+    for bucket in _MAJORITY_THRESHOLD_BUCKETS:
+        if sum(1 for t in totals_in if t <= bucket) / n >= fraction:
+            return bucket
+    return round(max(totals_in), 1)
+
+
 def build_hrrr_grid_note(detail):
     if not detail:
         return None
     label = detail.get("source_label", "HRRR")
-    lines = [f"- {label} grid (today + tomorrow): broad-scale ~{detail['avg_total_in']}\" average across the corridor, {_coverage_label(detail['coverage_pct'])}"]
-    if detail["max_total_in"] > detail["avg_total_in"] + 0.3:
+    lines = [f"- {label} grid (today + tomorrow): most of the corridor under {detail['majority_under_in']}\", {_coverage_label(detail['coverage_pct'])}"]
+    if detail["max_total_in"] > detail["majority_under_in"] + 0.3:
         near = f" near {detail['max_near']}" if detail["max_near"] else ""
         lines.append(f"- Isolated higher totals possible: up to {detail['max_total_in']}\"{near} in the {label} grid")
     return lines
