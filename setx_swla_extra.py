@@ -1170,6 +1170,63 @@ def fetch_temperature_blend():
     return {"high_f": round(sum(highs) / len(highs)), "low_f": round(sum(lows) / len(lows))}
 
 
+def fetch_ensemble_precip_coverage(forecast_days=7):
+    """Fraction of GEFS + ECMWF ensemble members showing measurable
+    precipitation (>=1mm) at the corridor's core points, per day.
+
+    A single deterministic run (Euro) can show ~0mm at every grid
+    point on a real scattered-storm day -- its one solution just
+    doesn't happen to put a storm exactly on a grid point or exactly
+    on that run. Ensemble spread across many possible solutions
+    reveals that real chance instead. Used as a cross-check/floor for
+    Euro on days 3-7 (blended in, not a replacement), per instruction:
+    catch storms a single-run point-threshold check can miss, without
+    over-correcting into being too aggressive."""
+    lat_str = ",".join(str(p[0]) for p in SETX_SWLA_POINTS)
+    lon_str = ",".join(str(p[1]) for p in SETX_SWLA_POINTS)
+    cache_buster = int(time.time())
+
+    def fetch_ensemble(models_param):
+        url = (
+            f"https://ensemble-api.open-meteo.com/v1/ensemble"
+            f"?latitude={lat_str}&longitude={lon_str}"
+            f"&daily=precipitation_sum&models={models_param}"
+            f"&forecast_days={forecast_days}&_cb={cache_buster}"
+        )
+        data = w._fetch_with_retries_bytes(url, f"EnsemblePrecip:{models_param}")
+        if not data:
+            return None
+        try:
+            pts = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        return pts if isinstance(pts, list) else None
+
+    gefs_points = fetch_ensemble("gfs_seamless")
+    ecmwf_points = fetch_ensemble("ecmwf_ifs025_ensemble")
+    if not gefs_points and not ecmwf_points:
+        return None
+
+    coverage_by_day = {}
+    for day_idx in range(forecast_days):
+        hits, total = 0, 0
+        for points in (gefs_points, ecmwf_points):
+            if not points:
+                continue
+            for point in points:
+                daily = point.get("daily", {})
+                for key, vals in daily.items():
+                    if not key.startswith("precipitation_sum_member"):
+                        continue
+                    if day_idx < len(vals) and vals[day_idx] is not None:
+                        total += 1
+                        if vals[day_idx] >= 0.5:
+                            hits += 1
+        coverage_by_day[day_idx] = round(100 * hits / total) if total else None
+
+    return coverage_by_day
+
+
 def fetch_seven_day_forecast(ndfd_totals=None):
     """Day-by-day 7-day forecast. Rain coverage is calculated from the
     SAME dense 25-point regional grid used for the HRRR grid detail
@@ -1265,6 +1322,11 @@ def fetch_seven_day_forecast(ndfd_totals=None):
     if ndfd_totals:
         nws_wet_signal = any(v >= 0.3 for v in ndfd_totals.values())
 
+    # Ensemble coverage as a cross-check/floor for days 3-7, per
+    # instruction -- catches scattered storm chances a single
+    # deterministic Euro run's point-threshold check can miss.
+    ensemble_coverage = fetch_ensemble_precip_coverage(forecast_days=7)
+
     days = []
     for day_idx in range(7):
         if day_idx <= 1:
@@ -1279,7 +1341,15 @@ def fetch_seven_day_forecast(ndfd_totals=None):
             low = temp_avg(hrrr_temps, day_idx, "temperature_2m_min") or temp_avg(euro_temps, day_idx, "temperature_2m_min")
         else:
             euro_cov = grid_coverage_pct(euro_grid, day_idx)
-            rain_pct = euro_cov
+            ens_cov = ensemble_coverage.get(day_idx) if ensemble_coverage else None
+            if euro_cov is not None and ens_cov is not None:
+                # Blend deterministic Euro with ensemble spread --
+                # averaged, not just taken outright, so a high
+                # ensemble spread doesn't override into being overly
+                # aggressive on its own, per instruction.
+                rain_pct = round((euro_cov + ens_cov) / 2)
+            else:
+                rain_pct = euro_cov if euro_cov is not None else ens_cov
             if rain_pct is not None and nws_wet_signal:
                 rain_pct = min(100, rain_pct + 5)  # light nudge only
             high = temp_avg(euro_temps, day_idx, "temperature_2m_max")
