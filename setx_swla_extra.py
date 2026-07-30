@@ -987,8 +987,18 @@ HRRR_GRID_LAT_MIN = 29.55
 HRRR_GRID_LAT_MAX = 30.75
 HRRR_GRID_LON_MIN = -95.55
 HRRR_GRID_LON_MAX = -93.10
-HRRR_GRID_ROWS = 5
-HRRR_GRID_COLS = 5
+# 9x9 = 81 points, ~10.3mi x 18.3mi spacing -- roughly halves the
+# previous 5x5 gap size, per instruction (denser grid so an isolated
+# storm can't fall entirely between points). This grid is shared with
+# the 7-day forecast's Euro fetch (7 days x this many points), which
+# is the heaviest single request in the pipeline -- verified live that
+# going denser (20x20=400 points) works fine for the 2-day HRRR-only
+# fetch, but the same density at 7 days of Euro data hit Open-Meteo's
+# rate limit. 9x9 is validated reliable for both use cases; Euro's own
+# ~9-25km native resolution doesn't reveal more real detail past this
+# density anyway, so this isn't a real loss for that portion.
+HRRR_GRID_ROWS = 9
+HRRR_GRID_COLS = 9
 
 
 def _hrrr_grid_points():
