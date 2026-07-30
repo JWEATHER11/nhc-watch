@@ -702,6 +702,8 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         lines.append("<b>\U0001F30A GULF COAST RAINFALL WATCH</b> (next 10 days)")
         for model_name, r in rainfall_flags.items():
             lines.append(f"- {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
+            if r.get("wpc_note"):
+                lines.append(f"  {r['wpc_note']}")
 
     lines.append("")
     lines.append("<b>\U0001F300 MAIN MODELS</b>")
@@ -796,6 +798,58 @@ GULF_COAST_RAIN_POINTS = [
 
 HEAVY_RAIN_THRESHOLD_INCHES = 1.0
 
+GULF_STATE_NAMES = {
+    "TX": "TEXAS", "OK": "OKLAHOMA", "LA": "LOUISIANA", "AR": "ARKANSAS",
+    "TN": "TENNESSEE", "AL": "ALABAMA", "MS": "MISSISSIPPI", "FL": "FLORIDA",
+    "GA": "GEORGIA", "SC": "SOUTH CAROLINA", "VA": "VIRGINIA",
+}
+
+WPC_HEADLINE_RE = re.compile(
+    r"THERE IS A (MARGINAL|SLIGHT|MODERATE|HIGH) RISK OF EXCESSIVE RAINFALL\s*(.*?)\.\.\.",
+    re.S,
+)
+
+
+def _fetch_wpc_day_blocks():
+    """Fetches and parses the WPC Excessive Rainfall Discussion once
+    per cycle (reused across all models below) -- WPC is only ever
+    shown as backup confirmation of what the models already flagged,
+    never as an independent signal, per instruction."""
+    import wpc_ero_pipeline as _wpc
+    raw = _wpc.fetch_ero_discussion()
+    if not raw:
+        return None
+    text = _wpc.clean_body(raw)
+    return _wpc.split_into_day_blocks(text) or None
+
+
+def _wpc_corroboration_for_place(blocks, place_name):
+    """Only returns a note if a WPC day's OFFICIAL HEADLINE (not its
+    narrative discussion text, which can say things like 'the Moderate
+    Risk...was removed') carries a Moderate or High risk AND that
+    headline's region text names the same city/state the model already
+    flagged, per instruction -- Slight/Marginal never count here, and a
+    non-matching area never gets attached."""
+    if not blocks:
+        return None
+    city = place_name.split(",")[0].strip().upper()
+    state_abbr = place_name.split(",")[-1].strip().upper()
+    state_name = GULF_STATE_NAMES.get(state_abbr, "")
+    keywords = [city] + ([state_name] if state_name else [])
+
+    for days, block_text in blocks:
+        m = WPC_HEADLINE_RE.search(block_text.upper())
+        if not m:
+            continue
+        risk_word, region_text = m.group(1), m.group(2)
+        if risk_word not in ("MODERATE", "HIGH"):
+            continue
+        if not any(kw in region_text for kw in keywords):
+            continue
+        day_str = "/".join(f"Day {d}" for d in days)
+        return f"WPC {day_str}: {risk_word.title()} risk of excessive rainfall in the area -- matches model signal"
+    return None
+
 
 def _fetch_rainfall_totals(endpoint):
     lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
@@ -868,13 +922,25 @@ def fetch_gulf_coast_rainfall():
         "Google AI": _fetch_rainfall_totals_google_ai(),
     }
     results = {}
+    wpc_blocks = None
+    wpc_fetch_attempted = False
     for model_name, totals in model_totals.items():
         if not totals:
             continue
         heaviest_place = max(totals, key=lambda p: totals[p])
         heaviest_val = totals[heaviest_place]
         if heaviest_val >= HEAVY_RAIN_THRESHOLD_INCHES:
-            results[model_name] = {"place": heaviest_place, "total_in": heaviest_val}
+            entry = {"place": heaviest_place, "total_in": heaviest_val}
+            if not wpc_fetch_attempted:
+                try:
+                    wpc_blocks = _fetch_wpc_day_blocks()
+                except Exception as e:
+                    print(f"[Gulf Coast Watch] WPC corroboration unavailable (non-fatal): {e}")
+                wpc_fetch_attempted = True
+            wpc_note = _wpc_corroboration_for_place(wpc_blocks, heaviest_place)
+            if wpc_note:
+                entry["wpc_note"] = wpc_note
+            results[model_name] = entry
     if not results:
         return None
     return results
