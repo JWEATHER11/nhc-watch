@@ -44,11 +44,28 @@ out of prototype status into `radar_watch_pipeline.py` at the repo
 root, which reuses this same grid + nearest-gate logic and adds
 state-based dedup + Telegram delivery to the NWS chat.
 
+**Houston derecho, May 16 2024 (KHGX 23:31 UTC, archived volume
+`KHGX20240516_233117_V06`):** a fast, damaging squall line (100 mph
+gusts, 4 tornadoes, 7 deaths, downtown Houston window damage) --
+picked as a real "ordinary severe convection" case, distinct in kind
+from a broad hurricane. First attempt used the wrong time window
+(guessed 10-11 UTC / early morning without checking a source; the
+storm actually hit Houston "shortly before 6pm CDT" = ~23:00 UTC per
+news coverage) and showed a clean corridor -- a reminder to verify a
+real event's actual time against a source before treating a null
+result as meaningful. At the corrected time:
+- 81/81 grid points checked
+- 24/81 (30%) storm-intensity gates (>= 35 dBZ), 56% coverage >= 20 dBZ
+- Max reflectivity: 54.5 dBZ near Houston -- correctly crosses into
+  the severe/hail-possible tier
+- Both trigger paths fired correctly: new storm-intensity areas
+  (Beaumont/Port Arthur, Houston, Jasper, Lake Charles) and the
+  severe-tier crossing.
+
+Three real cases now checked, each a different shape of event (null,
+broad hurricane, fast squall line) -- all came out correct.
+
 ## Still open / to keep watching
-- Only tested against one clear case and one hurricane case so far.
-  Ordinary summer pop-up thunderstorms (smaller, more isolated cells)
-  haven't been validated yet -- worth checking against a known local
-  severe-thunderstorm day when one comes up.
 - `unidata-nexrad-level2` volume cadence is roughly 4-6 minutes;
   a 10-minute poll cycle should never miss more than one volume, but
   hasn't been stress-tested against a fast-moving squall line yet.
