@@ -1,0 +1,39 @@
+name: Radar Watch (real NEXRAD observations)
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install arm_pyart numpy --break-system-packages
+
+      - name: Run radar watch pipeline
+        env:
+          NWS_TELEGRAM_BOT_TOKEN: ${{ secrets.NWS_TELEGRAM_BOT_TOKEN }}
+          NWS_TELEGRAM_CHAT_ID: ${{ secrets.NWS_TELEGRAM_CHAT_ID }}
+          PYTHONUNBUFFERED: "1"
+        run: python -u radar_watch_pipeline.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "radar-watch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add radar_watch_state.json
+          git diff --quiet --cached || git commit -m "Update radar watch state [skip ci]"
+          git push
