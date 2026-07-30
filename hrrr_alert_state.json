@@ -1,8 +1,8 @@
 {
   "last_alerted": {
-    "coverage_pct": 1,
-    "max_total_in": 4.3,
-    "max_near": "Beaumont/Port Arthur",
+    "coverage_pct": 0,
+    "max_total_in": 0.2,
+    "max_near": "Houston",
     "onset_hour_idx": null,
     "onset_hour_str": null,
     "max_gust_mph": 29.3,
