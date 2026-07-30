@@ -59,6 +59,7 @@ STORM_DBZ = 35  # real thunderstorm-intensity echo, not just light rain
 SEVERE_DBZ = 50  # heavy rain / small hail possible
 RAIN_DBZ = 20  # light-rain floor, used only for the coverage context line
 MIN_STORM_GATES = 3  # a real cluster, not one noisy/anomalous gate
+RADAR_TREND_HISTORY_LEN = 4  # same "last 4 runs" trend window as the front-signal tracker
 
 
 def _http_get_bytes(url, timeout=20):
@@ -222,7 +223,23 @@ def check_radar_trigger(current, state):
     return (len(reasons) > 0), reasons
 
 
-def build_radar_message(current, reasons):
+def _radar_trend_line(history):
+    """Compares the current reading against the oldest one still in the
+    tracked window (up to RADAR_TREND_HISTORY_LEN runs back) so an alert
+    can say whether a storm is building or fading, not just its
+    snapshot value -- same idea as the front-signal 'last 4 runs'
+    trend tracker."""
+    if len(history) < 2:
+        return None
+    oldest, newest = history[-1], history[0]
+    delta = newest - oldest
+    if abs(delta) < 5:
+        return None
+    direction = "intensifying" if delta > 0 else "weakening"
+    return f"Trending {direction} over the last {len(history)} checks ({oldest:.0f} -> {newest:.0f} dBZ)"
+
+
+def build_radar_message(current, reasons, trend_line=None):
     now_local = datetime.now(BEAUMONT_TZ)
     lines = [
         "<b>\U0001F4E1 Radar Watch</b> -- real observation, not model",
@@ -231,6 +248,8 @@ def build_radar_message(current, reasons):
     ]
     for r in reasons:
         lines.append(f"- {r}")
+    if trend_line:
+        lines.append(f"- {trend_line}")
     lines.append("")
     if current["storm_cities"]:
         lines.append(f"Currently storm-intensity near: {', '.join(current['storm_cities'])}")
@@ -296,8 +315,14 @@ def process_radar_watch(state):
         return
 
     should_alert, reasons = check_radar_trigger(current, state)
+
+    history = state.get("max_dbz_history", [])
+    history = [current["max_dbz"] or 0.0] + history[: RADAR_TREND_HISTORY_LEN - 1]
+    trend_line = _radar_trend_line(history) if should_alert else None
+
     state["active_storm_cities"] = current["storm_cities"]
     state["was_severe"] = current["max_dbz"] is not None and current["max_dbz"] >= SEVERE_DBZ
+    state["max_dbz_history"] = history
     save_state(state)
 
     if not should_alert:
@@ -305,7 +330,7 @@ def process_radar_watch(state):
         return
 
     print(f"Meaningful change detected -- sending. Reasons: {reasons}")
-    message = build_radar_message(current, reasons)
+    message = build_radar_message(current, reasons, trend_line)
     print(f"Message:\n{message}")
     try:
         deliver(message)
