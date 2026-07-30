@@ -32,7 +32,8 @@ jobs:
           NWS_TELEGRAM_CHAT_ID: ${{ secrets.NWS_TELEGRAM_CHAT_ID }}
           GEOAPIFY_API_KEY: ${{ secrets.GEOAPIFY_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python nws_warnings_fast_loop.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u nws_warnings_fast_loop.py
 
       - name: Final state commit (safety net)
         if: always()

@@ -36,7 +36,8 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           ALERT_TO: ${{ secrets.ALERT_TO }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python nhc_outlook_fast_loop.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u nhc_outlook_fast_loop.py
 
       - name: Final state commit (safety net)
         if: always()

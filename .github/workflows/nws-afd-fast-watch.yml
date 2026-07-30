@@ -31,7 +31,8 @@ jobs:
           NWS_TELEGRAM_BOT_TOKEN: ${{ secrets.NWS_TELEGRAM_BOT_TOKEN }}
           NWS_TELEGRAM_CHAT_ID: ${{ secrets.NWS_TELEGRAM_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python nws_afd_fast_loop.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u nws_afd_fast_loop.py
 
       - name: Final state commit (safety net)
         if: always()
