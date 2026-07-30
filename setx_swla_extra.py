@@ -1151,23 +1151,34 @@ def fetch_temperature_blend():
     return {"high_f": round(sum(highs) / len(highs)), "low_f": round(sum(lows) / len(lows))}
 
 
-def fetch_seven_day_forecast():
-    """Simple day-by-day 7-day forecast: HRRR for days it actually
-    covers (today/tomorrow), Euro for the rest, per instruction."""
-    names = list(SEVEN_DAY_POINTS.keys())
-    lat_str = ",".join(str(SEVEN_DAY_POINTS[n][0]) for n in names)
-    lon_str = ",".join(str(SEVEN_DAY_POINTS[n][1]) for n in names)
+def fetch_seven_day_forecast(ndfd_totals=None):
+    """Day-by-day 7-day forecast. Rain coverage is calculated from the
+    SAME dense 25-point regional grid used for the HRRR grid detail
+    (spanning the Beaumont/China/Nome/Sour Lake/Hampshire/Fannett/
+    Winnie area and Chambers/Hardin/Jefferson/Newton/Harris/Orange
+    counties), per instruction -- not a handful of city points, so a
+    meaningful minority of wet grid points actually shows up as a
+    realistic percentage instead of rounding to near-zero.
+
+    Day 1-2: HRRR + Euro grid coverage blended (HRRR weighted higher
+    for near-term timing/coverage). Day 3-7: Euro grid coverage as
+    primary, with NWS Houston/Lake Charles QPF as a light supporting
+    nudge only (never the primary driver), per instruction.
+
+    High/low temps still use the 7-town SEVEN_DAY_POINTS blend."""
+    grid_points = _hrrr_grid_points()
+    grid_lat_str = ",".join(str(p[0]) for p in grid_points)
+    grid_lon_str = ",".join(str(p[1]) for p in grid_points)
     cache_buster = int(time.time())
 
-    def fetch(endpoint, models_param=None, forecast_days=7):
+    def fetch_grid(endpoint, models_param=None, forecast_days=7):
         models_bit = f"&models={models_param}" if models_param else ""
         url = (
             f"https://api.open-meteo.com/v1/{endpoint}"
-            f"?latitude={lat_str}&longitude={lon_str}"
-            f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum"
-            f"&forecast_days={forecast_days}{models_bit}&temperature_unit=fahrenheit&_cb={cache_buster}"
+            f"?latitude={grid_lat_str}&longitude={grid_lon_str}"
+            f"&daily=precipitation_sum&forecast_days={forecast_days}{models_bit}&_cb={cache_buster}"
         )
-        data = w._fetch_with_retries_bytes(url, f"SevenDay:{endpoint}:{models_param or 'auto'}")
+        data = w._fetch_with_retries_bytes(url, f"SevenDayGrid:{endpoint}:{models_param or 'auto'}")
         if not data:
             return None
         try:
@@ -1176,50 +1187,89 @@ def fetch_seven_day_forecast():
             return None
         return points if isinstance(points, list) else None
 
-    hrrr_points = fetch("forecast", models_param="ncep_hrrr_conus", forecast_days=2)
-    euro_points = fetch("ecmwf", forecast_days=7)
-
-    if not euro_points:
-        return None
-
-    def day_stats(points, day_idx):
+    def grid_coverage_pct(points, day_idx):
         if not points:
             return None
-        highs, lows, rains, hits = [], [], [], 0
-        total = 0
+        hits, total = 0, 0
         for point in points:
-            daily = point.get("daily", {})
-            h = daily.get("temperature_2m_max", [])
-            l = daily.get("temperature_2m_min", [])
-            p = daily.get("precipitation_sum", [])
-            if day_idx < len(h) and h[day_idx] is not None:
-                highs.append(h[day_idx])
-            if day_idx < len(l) and l[day_idx] is not None:
-                lows.append(l[day_idx])
-            if day_idx < len(p) and p[day_idx] is not None:
+            daily_mm = point.get("daily", {}).get("precipitation_sum", [])
+            if day_idx < len(daily_mm) and daily_mm[day_idx] is not None:
                 total += 1
-                rains.append(p[day_idx])
-                if p[day_idx] >= 2.5:
+                if daily_mm[day_idx] >= 2.5:
                     hits += 1
-        if not highs or not lows:
+        return round(100 * hits / total) if total else None
+
+    hrrr_grid = fetch_grid("forecast", models_param="ncep_hrrr_conus", forecast_days=2)
+    euro_grid = fetch_grid("ecmwf", forecast_days=7)
+
+    # Temperature blend across the 7-town points.
+    temp_names = list(SEVEN_DAY_POINTS.keys())
+    temp_lat_str = ",".join(str(SEVEN_DAY_POINTS[n][0]) for n in temp_names)
+    temp_lon_str = ",".join(str(SEVEN_DAY_POINTS[n][1]) for n in temp_names)
+
+    def fetch_temps(endpoint, models_param=None, forecast_days=7):
+        models_bit = f"&models={models_param}" if models_param else ""
+        url = (
+            f"https://api.open-meteo.com/v1/{endpoint}"
+            f"?latitude={temp_lat_str}&longitude={temp_lon_str}"
+            f"&daily=temperature_2m_max,temperature_2m_min&forecast_days={forecast_days}{models_bit}"
+            f"&temperature_unit=fahrenheit&_cb={cache_buster}"
+        )
+        data = w._fetch_with_retries_bytes(url, f"SevenDayTemps:{endpoint}:{models_param or 'auto'}")
+        if not data:
             return None
-        rain_pct = round(100 * hits / total) if total else 0
-        return {
-            "high_f": round(sum(highs) / len(highs)),
-            "low_f": round(sum(lows) / len(lows)),
-            "rain_pct": rain_pct,
-        }
+        try:
+            points = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        return points if isinstance(points, list) else None
+
+    hrrr_temps = fetch_temps("forecast", models_param="ncep_hrrr_conus", forecast_days=2)
+    euro_temps = fetch_temps("ecmwf", forecast_days=7)
+
+    def temp_avg(points, day_idx, key):
+        if not points:
+            return None
+        vals = []
+        for point in points:
+            arr = point.get("daily", {}).get(key, [])
+            if day_idx < len(arr) and arr[day_idx] is not None:
+                vals.append(arr[day_idx])
+        return round(sum(vals) / len(vals)) if vals else None
+
+    if not euro_grid and not hrrr_grid:
+        return None
+
+    # NWS QPF as a light supporting signal only, per instruction --
+    # a small nudge, never the primary driver of the percentage.
+    nws_wet_signal = False
+    if ndfd_totals:
+        nws_wet_signal = any(v >= 0.3 for v in ndfd_totals.values())
 
     days = []
     for day_idx in range(7):
-        # HRRR only meaningfully covers day 0 (today) and day 1
-        # (tomorrow) -- use it there, Euro for the rest, per instruction.
-        stats = None
-        if day_idx <= 1 and hrrr_points:
-            stats = day_stats(hrrr_points, day_idx)
-        if stats is None:
-            stats = day_stats(euro_points, day_idx)
-        days.append(stats)
+        if day_idx <= 1:
+            hrrr_cov = grid_coverage_pct(hrrr_grid, day_idx)
+            euro_cov = grid_coverage_pct(euro_grid, day_idx)
+            if hrrr_cov is not None and euro_cov is not None:
+                # HRRR weighted higher for near-term, per instruction.
+                rain_pct = round(hrrr_cov * 0.65 + euro_cov * 0.35)
+            else:
+                rain_pct = hrrr_cov if hrrr_cov is not None else euro_cov
+            high = temp_avg(hrrr_temps, day_idx, "temperature_2m_max") or temp_avg(euro_temps, day_idx, "temperature_2m_max")
+            low = temp_avg(hrrr_temps, day_idx, "temperature_2m_min") or temp_avg(euro_temps, day_idx, "temperature_2m_min")
+        else:
+            euro_cov = grid_coverage_pct(euro_grid, day_idx)
+            rain_pct = euro_cov
+            if rain_pct is not None and nws_wet_signal:
+                rain_pct = min(100, rain_pct + 5)  # light nudge only
+            high = temp_avg(euro_temps, day_idx, "temperature_2m_max")
+            low = temp_avg(euro_temps, day_idx, "temperature_2m_min")
+
+        if high is None or low is None:
+            days.append(None)
+            continue
+        days.append({"high": high, "low": low, "rain_pct": rain_pct if rain_pct is not None else 0})
 
     return days
 
@@ -1228,12 +1278,19 @@ def build_seven_day_section(days):
     if not days or not any(days):
         return None
     lines = ["", "<b>7-Day Forecast</b>"]
-    day_labels = ["Day 1 (Today)", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"]
-    for label, stats in zip(day_labels, days):
-        if not stats:
-            lines.append(f"{label}: data unavailable")
+    import datetime as _dt
+    now_local = _dt.datetime.now(BEAUMONT_TZ)
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    day_labels = []
+    for i in range(7):
+        d = now_local + _dt.timedelta(days=i)
+        wd = weekday_names[d.weekday()]
+        day_labels.append(f"Today ({wd})" if i == 0 else wd)
+    for i, d in enumerate(days):
+        if d is None:
+            lines.append(f"{day_labels[i]}: data unavailable")
             continue
-        cov_word = _coverage_word(stats["rain_pct"]) or "mostly dry"
-        lines.append(f"{label}: High {stats['high_f']} / Low {stats['low_f']} / Rain: {stats['rain_pct']}% ({cov_word})")
+        cov = _coverage_word(d["rain_pct"]) or "mostly dry"
+        cov_str = f" ({cov})" if d["rain_pct"] >= 10 else ""
+        lines.append(f"{day_labels[i]}: High {d['high']} / Low {d['low']} / Rain {d['rain_pct']}%{cov_str}")
     return lines
-
