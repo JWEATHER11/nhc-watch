@@ -465,14 +465,28 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
 # precip), GFS to cross-check. Flags things plainly -- no forecast
 # discussion, just what the models are showing.
 
+# Meteorological summer (Jun-Aug) fronts here are real but genuinely
+# weaker-signal than fall/winter/spring -- the airmass contrast just
+# isn't as big, so requiring winter-strength numbers year-round misses
+# real summer frontal passages entirely, per instruction. Summer gets
+# its own, lower bar instead of one flat threshold all year.
 DEWPOINT_DROP_THRESHOLD_F = 15.0
+DEWPOINT_DROP_THRESHOLD_SUMMER_F = 10.0
 TEMP_DROP_THRESHOLD_F = 8.0
+TEMP_DROP_THRESHOLD_SUMMER_F = 5.0
 NORTHERLY_MIN_DEG = 315
 NORTHERLY_MAX_DEG = 45
 # A front should show up across MOST of the region, not just one
 # model blip at one point -- per instruction, requires at least this
 # fraction of the corridor points to agree before flagging anything.
 FRONT_AGREEMENT_FRACTION = 0.6
+FRONT_AGREEMENT_FRACTION_SUMMER = 0.5
+SUMMER_MONTHS = (6, 7, 8)
+
+
+def _is_summer():
+    import datetime as _dt
+    return _dt.datetime.now(w.BEAUMONT_TZ).month in SUMMER_MONTHS
 
 
 def _c_to_f(c):
@@ -543,6 +557,11 @@ def fetch_front_signal():
     if not euro_points:
         return None
 
+    summer = _is_summer()
+    dp_threshold = DEWPOINT_DROP_THRESHOLD_SUMMER_F if summer else DEWPOINT_DROP_THRESHOLD_F
+    temp_threshold = TEMP_DROP_THRESHOLD_SUMMER_F if summer else TEMP_DROP_THRESHOLD_F
+    agreement_threshold = FRONT_AGREEMENT_FRACTION_SUMMER if summer else FRONT_AGREEMENT_FRACTION
+
     n_points = len(euro_points)
     dewpoint_drop_points = 0
     temp_drop_points = 0
@@ -570,7 +589,7 @@ def fetch_front_signal():
             drop = dp[i] - dp[i + 24]
             if drop > point_dp_drop:
                 point_dp_drop, point_dp_idx = drop, i + 24
-        if point_dp_drop >= DEWPOINT_DROP_THRESHOLD_F:
+        if point_dp_drop >= dp_threshold:
             dewpoint_drop_points += 1
         if point_dp_drop > max_dewpoint_drop:
             max_dewpoint_drop = point_dp_drop
@@ -584,7 +603,7 @@ def fetch_front_signal():
             drop = temp[i] - temp[i + 24]
             if drop > point_temp_drop:
                 point_temp_drop, point_temp_idx = drop, i + 24
-        if point_temp_drop >= TEMP_DROP_THRESHOLD_F:
+        if point_temp_drop >= temp_threshold:
             temp_drop_points += 1
         if point_temp_drop > max_temp_drop:
             max_temp_drop = point_temp_drop
@@ -606,9 +625,9 @@ def fetch_front_signal():
                                 wind_shift_time = t
                                 break
 
-    dewpoint_widespread = (dewpoint_drop_points / n_points) >= FRONT_AGREEMENT_FRACTION
-    temp_widespread = (temp_drop_points / n_points) >= FRONT_AGREEMENT_FRACTION
-    wind_widespread = (north_shift_points / n_points) >= FRONT_AGREEMENT_FRACTION
+    dewpoint_widespread = (dewpoint_drop_points / n_points) >= agreement_threshold
+    temp_widespread = (temp_drop_points / n_points) >= agreement_threshold
+    wind_widespread = (north_shift_points / n_points) >= agreement_threshold
 
     return {
         "dewpoint_drop_f": round(max_dewpoint_drop, 1),
@@ -621,6 +640,9 @@ def fetch_front_signal():
         "wind_shift_time": _format_front_time(wind_shift_time),
         "front_signal": dewpoint_widespread or wind_widespread,
         "cooling_signal": temp_widespread,
+        "season": "summer" if summer else "standard",
+        "dp_threshold_used": dp_threshold,
+        "temp_threshold_used": temp_threshold,
     }
 
 
@@ -629,8 +651,10 @@ def build_front_signal_section(signal):
         return None
     lines = []
     if signal["front_signal"]:
-        lines.append("FRONT WATCH:")
-        if signal["dewpoint_drop_f"] >= DEWPOINT_DROP_THRESHOLD_F:
+        season_tag = " (summer-adjusted threshold)" if signal.get("season") == "summer" else ""
+        lines.append(f"FRONT WATCH{season_tag}:")
+        dp_threshold_used = signal.get("dp_threshold_used", DEWPOINT_DROP_THRESHOLD_F)
+        if signal["dewpoint_drop_f"] >= dp_threshold_used:
             when = f", {signal['dewpoint_drop_time']}" if signal.get("dewpoint_drop_time") else ""
             lines.append(f"- Dewpoints dropping sharply and widely across the region -- up to {signal['dewpoint_drop_f']}F drop within 24h{when} ({signal.get('dewpoint_agreement_pct', 0)}% of corridor points agree)")
         if signal["shift_to_north"]:
