@@ -60,8 +60,11 @@ OUTLOOKS = {
     "day48": {
         "pil": "SWOD48",
         "nhc_fallback": "https://www.spc.noaa.gov/products/exper/day4-8/day4-8.html?text",
-        "which": "48",
-        "cat": "any",
+        # Verified live against IEM autoplot #220's actual <select>
+        "which": "0C",  # was "48" -- not a real option, IEM was silently
+        "cat": "categorical",  # was "any" -- also not a real option
+        # falling back to something else entirely (Day 1's graphic),
+        # per instruction -- exactly what was being reported.
         "label": "SPC Day 4-8 Severe Weather Outlook",
     },
 }
@@ -127,6 +130,50 @@ def graphic_url(day_key):
         f"which:{which}::cat:{cat}::t:state::csector:conus::"
         f"valid:{encoded_valid}::dpi:100.png"
     )
+
+
+def day48_risk_days():
+    """Day 4-8 doesn't always have a real, drawable risk area -- when
+    it doesn't, the graphic just shows a "Potential Too Low" watermark
+    (confirmed live). Rather than parse the image, this fetches IEM's
+    CSV data endpoint (same underlying data as the graphic, same URL
+    pattern with .csv instead of .png) and checks the "threshold"
+    column, per instruction: verified live that it's blank for every
+    day when there's genuinely no risk area, and populated with real
+    category codes (TSTM/MRGL/SLGT/etc.) when there is one -- same
+    field Day 1's outlook uses. Returns the list of specific days (as
+    strings, e.g. ["4","5"]) that actually have a real outline, so we
+    know whether to send the graphic at all, and which day it's for."""
+    which = OUTLOOKS["day48"]["which"]
+    cat = OUTLOOKS["day48"]["cat"]
+    now_utc = datetime.now(timezone.utc)
+    valid_str = now_utc.strftime("%Y-%m-%d %H%M")
+    encoded_valid = urllib.parse.quote(valid_str)
+    url = (
+        f"https://mesonet.agron.iastate.edu/plotting/auto/plot/220/"
+        f"which:{which}::cat:{cat}::t:state::csector:conus::"
+        f"valid:{encoded_valid}::dpi:100.csv"
+    )
+    text = _fetch_with_retries(url, "IEM:day48csv")
+    if not text:
+        return None
+    lines = text.strip().split("\n")
+    if len(lines) < 2:
+        return None
+    header = lines[0].split(",")
+    try:
+        threshold_idx = header.index("threshold")
+        day_idx = header.index("day")
+    except ValueError:
+        return None
+    days_with_risk = []
+    for line in lines[1:]:
+        cols = line.split(",")
+        if len(cols) <= max(threshold_idx, day_idx):
+            continue
+        if cols[threshold_idx].strip():
+            days_with_risk.append(cols[day_idx].strip())
+    return days_with_risk
 
 
 def issued_time_from_header(text):
@@ -371,10 +418,24 @@ def process_day(day_key, state):
 
     print(f"[{day_key}] New content detected -- sending graphic first, then text.")
 
-    photo_url = graphic_url(day_key)
+    send_graphic = True
+    graphic_caption = cfg["label"]
+    if day_key == "day48":
+        # Day 4-8 doesn't always have a real risk area -- only send
+        # the graphic when at least one specific day actually has one,
+        # per instruction; otherwise text/forecast only, no "Potential
+        # Too Low" placeholder image.
+        risk_days = day48_risk_days()
+        if risk_days:
+            graphic_caption = f"{cfg['label']} (Day {'/'.join(sorted(set(risk_days)))})"
+        else:
+            send_graphic = False
+            print(f"[{day_key}] No real risk area on any day 4-8 this cycle -- skipping graphic, text only.")
+
+    photo_url = graphic_url(day_key) if send_graphic else None
     if telegram_configured() and photo_url:
         try:
-            send_telegram_photo(photo_url, caption=cfg["label"])
+            send_telegram_photo(photo_url, caption=graphic_caption)
             print(f"[{day_key}] Graphic sent.")
         except Exception as e:
             print(f"[{day_key}] Graphic send failed (non-fatal): {e}")
