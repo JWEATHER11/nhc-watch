@@ -215,8 +215,13 @@ def fetch_ndfd_qpf_totals():
     display and for comparing cycle-to-cycle for meaningful change."""
     totals = {}
     for office_name, url in NDFD_OFFICES.items():
-        cache_buster = int(time.time())
-        data = w._fetch_with_retries_bytes(f"{url}?_cb={cache_buster}", f"NDFD:{office_name}")
+        # NOTE: api.weather.gov strictly rejects unrecognized query
+        # params (verified live: appending the usual "?_cb=" cache
+        # buster returns a hard 400 Bad Request) -- this was silently
+        # breaking every single NDFD fetch. No cache buster here;
+        # unlike Open-Meteo, this is a live API response, not
+        # something that needs busting.
+        data = w._fetch_with_retries_bytes(url, f"NDFD:{office_name}")
         if not data:
             continue
         try:
@@ -231,6 +236,52 @@ def fetch_ndfd_qpf_totals():
                 total_in += val / 25.4
         totals[office_name] = round(total_in, 1)
     return totals or None
+
+
+NWS_FORECAST_LINKS = {
+    "NWS Houston": "https://forecast.weather.gov/MapClick.php?lat=29.76&lon=-95.37",
+    "NWS Lake Charles": "https://forecast.weather.gov/MapClick.php?lat=30.23&lon=-93.22",
+}
+
+
+def fetch_ndfd_qpf_by_range():
+    """Same NDFD QPF source as fetch_ndfd_qpf_totals, but bucketed by
+    local Beaumont-time day into today+tomorrow and days 3-5, per
+    instruction -- so those specific ranges can show NWS's own numbers
+    alongside the model numbers, not just one flat multi-day total."""
+    import datetime as _dt
+    now_local = _dt.datetime.now(w.BEAUMONT_TZ)
+    today_date = now_local.date()
+
+    today_tomorrow = {}
+    days_3_5 = {}
+    for office_name, url in NDFD_OFFICES.items():
+        data = w._fetch_with_retries_bytes(url, f"NDFD_range:{office_name}")
+        if not data:
+            continue
+        try:
+            parsed = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        qpf = parsed.get("properties", {}).get("quantitativePrecipitation", {}).get("values", [])
+        tt_total, d35_total = 0.0, 0.0
+        for entry in qpf:
+            val = entry.get("value")
+            valid_time = entry.get("validTime", "")
+            if val is None or "/" not in valid_time:
+                continue
+            try:
+                start_dt = _dt.datetime.fromisoformat(valid_time.split("/")[0]).astimezone(w.BEAUMONT_TZ)
+            except ValueError:
+                continue
+            day_offset = (start_dt.date() - today_date).days
+            if 0 <= day_offset <= 1:
+                tt_total += val / 25.4
+            elif 3 <= day_offset <= 5:
+                d35_total += val / 25.4
+        today_tomorrow[office_name] = round(tt_total, 1)
+        days_3_5[office_name] = round(d35_total, 1)
+    return (today_tomorrow or None), (days_3_5 or None)
 
 
 def describe_ndfd_change(current_totals, previous_totals, send_count_today):
@@ -286,38 +337,98 @@ def _peak_day_note(seven_day):
     return f"Best chance for coverage/heavier rain this week: {label} (~{best_pct}%)"
 
 
-def build_setx_swla_section(outlook, seven_day=None):
+SETX_SWLA_WPC_KEYWORDS = [
+    "HOUSTON", "GALVESTON", "BEAUMONT", "PORT ARTHUR", "ORANGE",
+    "JASPER", "LAKE CHARLES", "SOUTHEAST TEXAS", "SOUTHWEST LOUISIANA",
+    "SETX", "SWLA", "GOLDEN TRIANGLE", "SE TEXAS", "SW LOUISIANA",
+]
+
+
+def fetch_setx_swla_wpc_corroboration():
+    """If WPC's Excessive Rainfall Discussion carries a Moderate or
+    High risk headline (not narrative text -- see WPC_HEADLINE_RE)
+    that names our own SETX/SWLA region, regardless of which day
+    range it falls in, per instruction: attach NWS Houston/Lake
+    Charles' own totals and a link to their forecast. Only when WPC
+    actually flags this specific local region -- never unconditionally.
+    NDFD totals are only fetched if a match is actually found, so a
+    quiet cycle (the common case) doesn't pay for an extra fetch."""
+    try:
+        blocks = w._fetch_wpc_day_blocks()
+    except Exception as e:
+        print(f"[SETX/SWLA WPC check] unavailable (non-fatal): {e}")
+        return None
+    if not blocks:
+        return None
+    for days, block_text in blocks:
+        m = w.WPC_HEADLINE_RE.search(block_text.upper())
+        if not m:
+            continue
+        risk_word, region_text = m.group(1), m.group(2)
+        if risk_word not in ("MODERATE", "HIGH"):
+            continue
+        if not any(kw in region_text for kw in SETX_SWLA_WPC_KEYWORDS):
+            continue
+        day_str = "/".join(f"Day {d}" for d in days)
+        lines = [f"WPC {day_str}: {risk_word.title()} risk of excessive rainfall for SETX/SWLA -- watch closely"]
+        ndfd_totals = fetch_ndfd_qpf_totals()
+        if ndfd_totals:
+            for office, total in ndfd_totals.items():
+                link = NWS_FORECAST_LINKS.get(office)
+                lines.append(f"  {office}: {total}\" over 7 days" + (f" -- {link}" if link else ""))
+        return lines
+    return None
+
+
+def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None):
     if not outlook:
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
 
-    # Day 1-2 (today + tomorrow, HRRR's real range): pulled from the
-    # 7-Day Forecast's own day 0/1 entries, which already use the
-    # dense 9x9 grid with HRRR weighted 65% / Euro 35%, per
-    # instruction -- day 1-2 must use HRRR on the large grid so a
-    # small storm can't fall entirely between points, and this avoids
-    # a second, different-grid answer for the same two days.
-    lines.append("<b>Next 2-3 days</b>")
+    # Today + tomorrow (HRRR's real range): pulled from the 7-Day
+    # Forecast's own day 0/1 entries, which already use the dense 9x9
+    # grid with HRRR weighted 65% / Euro 35%, per instruction -- must
+    # use HRRR on the large grid so a small storm can't fall entirely
+    # between points, and this avoids a second, different-grid answer
+    # for the same two days.
+    lines.append("<b>Today & Tomorrow</b>")
     if seven_day and seven_day[0] and seven_day[1]:
         d0, d1 = seven_day[0], seven_day[1]
         avg_pct = round((d0["rain_pct"] + d1["rain_pct"]) / 2)
         if avg_pct < 10:
-            lines.append(f"- Dry -- HRRR/Euro blend shows mostly dry conditions across the corridor today and tomorrow.")
+            lines.append("- Dry -- HRRR/Euro blend shows mostly dry conditions across the corridor today and tomorrow.")
         else:
             cov = _coverage_word(avg_pct) or "some chances"
             lines.append(f"- {cov.capitalize()} -- HRRR/Euro blend shows ~{avg_pct}% coverage today and tomorrow.")
     else:
         lines.append("- Data unavailable this cycle.")
+    if hrrr_grid_lines:
+        lines.extend(hrrr_grid_lines)
+    if ndfd_today_tomorrow:
+        nws_parts = [f"{office} {total}\"" for office, total in ndfd_today_tomorrow.items()]
+        lines.append("- NWS: " + ", ".join(nws_parts))
     lines.append("")
 
+    # Days 3-5: pulled from the same dense-grid 7-Day Forecast (day
+    # indices 2-4), per instruction -- same reasoning as above, this
+    # used to come from the old sparse 5-point grid.
     lines.append("<b>Days 3-5</b>")
-    parts = []
-    if outlook["medium_euro_in"] is not None:
-        parts.append(f"Euro {outlook['medium_euro_in']}\"")
-    if outlook["medium_gfs_in"] is not None:
-        parts.append(f"GFS {outlook['medium_gfs_in']}\"")
-    medium_word = _coverage_word(outlook.get("medium_coverage_pct")) or "data unavailable"
-    lines.append("- " + (", ".join(parts) if parts else "data unavailable") + f" -- {medium_word}")
+    mid_days = [d for d in (seven_day[2:5] if seven_day and len(seven_day) >= 5 else []) if d]
+    if mid_days:
+        avg_pct = round(sum(d["rain_pct"] for d in mid_days) / len(mid_days))
+        cov = _coverage_word(avg_pct) or "mostly dry"
+        parts = []
+        if outlook["medium_euro_in"] is not None:
+            parts.append(f"Euro {outlook['medium_euro_in']}\"")
+        if outlook["medium_gfs_in"] is not None:
+            parts.append(f"GFS {outlook['medium_gfs_in']}\"")
+        model_str = (", ".join(parts) + " -- " if parts else "")
+        lines.append(f"- {model_str}{cov} (~{avg_pct}% coverage, dense grid)")
+    else:
+        lines.append("- Data unavailable this cycle.")
+    if ndfd_days_3_5:
+        nws_parts = [f"{office} {total}\"" for office, total in ndfd_days_3_5.items()]
+        lines.append("- NWS: " + ", ".join(nws_parts))
     lines.append("")
 
     lines.append("<b>Day 5+</b>")
@@ -342,6 +453,10 @@ def build_setx_swla_section(outlook, seven_day=None):
     if peak_note:
         lines.append("")
         lines.append(f"- {peak_note}")
+
+    if wpc_setx_swla_note:
+        lines.append("")
+        lines.extend(wpc_setx_swla_note)
     return lines
 
 
@@ -642,7 +757,7 @@ def fetch_conditions_detail():
     url = (
         f"https://api.open-meteo.com/v1/ecmwf"
         f"?latitude={lat_str}&longitude={lon_str}"
-        f"&hourly=temperature_2m,apparent_temperature,dewpoint_2m,wind_speed_10m,wind_direction_10m,precipitation"
+        f"&hourly=temperature_2m,apparent_temperature,dewpoint_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation"
         f"&daily=temperature_2m_max,temperature_2m_min"
         f"&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&_cb={cache_buster}"
     )
@@ -715,6 +830,18 @@ def fetch_conditions_detail():
         avg_dir = sum(wdir) / len(wdir)
         dir_label = _deg_to_compass(avg_dir)
         wind_note = f"{dir_label} around {avg_speed} mph"
+        # Strongest gust anywhere across the corridor points over the
+        # next 24h, per instruction -- not just Beaumont/Port Arthur's
+        # single-point average, so a genuinely gusty spot elsewhere in
+        # the area doesn't get averaged away to nothing.
+        max_gust = 0.0
+        for city_data in by_city.values():
+            gusts = city_data.get("hourly", {}).get("wind_gusts_10m", [])[:24]
+            for g in gusts:
+                if g is not None and g > max_gust:
+                    max_gust = g
+        if max_gust > 0 and max_gust - avg_speed >= 5:
+            wind_note += f", gusts up to {round(max_gust)} mph"
 
     precip = hourly.get("precipitation", [])[:48]
     rain_timing = _describe_rain_timing(precip)
@@ -791,15 +918,19 @@ def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan,
         lines.append(f"- Dewpoints {details['dewpoint_trend']}")
     if details["wind_note"]:
         lines.append(f"- Wind: {details['wind_note']}")
-    if details["rain_timing"]:
+    cov = setx_swla_outlook.get("coverage_pct") if setx_swla_outlook else None
+    # Rain timing only shown when there's an actual meaningful chance
+    # of rain, per instruction -- previously this came from a single
+    # point's raw hourly trace, which could show "mainly overnight"
+    # from a trace amount even when coverage was genuinely ~0%,
+    # directly contradicting the "Chance of measurable rain" line
+    # right below it.
+    if details["rain_timing"] and cov is not None and cov >= 10:
         lines.append(f"- Rain timing: {details['rain_timing']}")
-    if setx_swla_outlook and setx_swla_outlook.get("coverage_pct") is not None:
-        cov = setx_swla_outlook["coverage_pct"]
+    if cov is not None:
         lines.append(f"- Chance of measurable rain: ~{cov}%")
         if setx_swla_outlook.get("heavy_potential"):
             lines.append("- Chance of 1\"+ in spots: elevated given current signal")
-        conf = "high" if cov >= 60 or cov <= 10 else ("moderate" if cov >= 30 else "low")
-        lines.append(f"- Confidence on main rain period: {conf}")
     pattern = build_pattern_oneliner(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
     if pattern:
         lines.append(f"- Pattern: {pattern}")
