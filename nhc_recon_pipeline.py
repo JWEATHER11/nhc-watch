@@ -37,11 +37,11 @@ NHC_RECON_URL = "https://www.nhc.noaa.gov/text/MIAREPNT2.shtml?text"
 STATE_FILE = Path(__file__).parent / "recon_pipeline_state.json"
 CENTRAL_UTC_OFFSET = 5
 
-MAX_ATTEMPTS = 3
-RETRY_DELAY_SEC = 5
+MAX_ATTEMPTS = 2  # reduced from 3 -- speed, matches wxmodel_pipeline.py fix
+RETRY_DELAY_SEC = 2  # reduced from 5 -- speed, matches wxmodel_pipeline.py fix
 
 
-def _http_get(url, timeout=20):
+def _http_get(url, timeout=10):  # reduced from 20 -- speed, matches wxmodel_pipeline.py fix
     req = urllib.request.Request(url, headers={"User-Agent": "nhc-recon-pipeline/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="replace")

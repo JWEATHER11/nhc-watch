@@ -46,8 +46,8 @@ STATE_FILE = Path(__file__).parent / "hdob_state.json"
 ADVISORY_STATE_FILE = Path(__file__).parent / "pipeline_state.json"  # shared w/ nhc_pipeline.py
 CENTRAL_UTC_OFFSET = 5
 
-MAX_ATTEMPTS = 3
-RETRY_DELAY_SEC = 5
+MAX_ATTEMPTS = 2  # reduced from 3 -- speed, matches wxmodel_pipeline.py fix
+RETRY_DELAY_SEC = 2  # reduced from 5 -- speed, matches wxmodel_pipeline.py fix
 
 # --- Significance thresholds -- tuned to only fire on things a met would
 # actually call out, not routine noise ---
@@ -59,7 +59,7 @@ WEAKENING_WIND_MARGIN_MPH = 8    # this far below official = worth flagging as w
 WEAKENING_PRESSURE_MARGIN_MB = 3 # this far above official = worth flagging as weakening
 
 
-def _http_get(url, timeout=20):
+def _http_get(url, timeout=10):  # reduced from 20 -- speed, matches wxmodel_pipeline.py fix
     req = urllib.request.Request(url, headers={"User-Agent": "nhc-hdob-pipeline/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="replace")

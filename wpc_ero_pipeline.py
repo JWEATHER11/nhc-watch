@@ -24,8 +24,8 @@ from pathlib import Path
 
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
 STATE_FILE = Path(__file__).parent / "wpc_ero_state.json"
-MAX_ATTEMPTS = 3
-RETRY_DELAY_SEC = 5
+MAX_ATTEMPTS = 2  # reduced from 3 -- speed, matches wxmodel_pipeline.py fix
+RETRY_DELAY_SEC = 2  # reduced from 5 -- speed, matches wxmodel_pipeline.py fix
 
 # Region keywords covering the Houston-to-Jasper, Beaumont/Port
 # Arthur/Orange-to-Lake Charles area (SETX / SWLA).
@@ -41,7 +41,7 @@ DAY_LABELS = {
 }
 
 
-def _http_get(url, timeout=20):
+def _http_get(url, timeout=10):  # reduced from 20 -- speed, matches wxmodel_pipeline.py fix
     req = urllib.request.Request(url, headers={"User-Agent": "wpc-ero-pipeline/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="replace")

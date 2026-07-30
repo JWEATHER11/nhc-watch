@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
 nws_afd_pipeline.py -- Tracks the local NWS Area Forecast Discussion (AFD)
-for Houston/Galveston (KHGX) and Lake Charles (KLCH), sending the full
-text to the NWS Telegram chat every time either office issues a genuinely
-new one. Same reliable pattern as everything else: cache-busted fetch,
-full-text dedup, Telegram only, zero AI (this is the forecaster's own
-words, US government work, public domain).
+for Houston/Galveston (KHGX) and Lake Charles (KLCH). AFDs get re-issued
+several times a day with mostly-routine wording changes, so this caps
+delivery to one AM send and one PM/evening send per office per day --
+per instruction, sending on every single text diff was "the same stuff
+over and over again." A newly-appearing severe-weather keyword bypasses
+the cap and sends immediately regardless of how many times already sent
+today. Same reliable pattern as everything else otherwise: cache-busted
+fetch, full-text dedup, Telegram only, zero AI (this is the forecaster's
+own words, US government work, public domain).
 """
 
 import json
@@ -15,9 +19,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
+BEAUMONT_TZ = ZoneInfo("America/Chicago")
 
 OFFICES = {
     "hgx": {
@@ -33,11 +40,11 @@ OFFICES = {
 }
 
 STATE_FILE = Path(__file__).parent / "nws_afd_state.json"
-MAX_ATTEMPTS = 3
-RETRY_DELAY_SEC = 5
+MAX_ATTEMPTS = 2  # reduced from 3 -- speed, matches wxmodel_pipeline.py fix
+RETRY_DELAY_SEC = 2  # reduced from 5 -- speed, matches wxmodel_pipeline.py fix
 
 
-def _http_get(url, timeout=20):
+def _http_get(url, timeout=10):  # reduced from 20 -- speed, matches wxmodel_pipeline.py fix
     req = urllib.request.Request(url, headers={"User-Agent": "nws-afd-pipeline/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="replace")
@@ -228,6 +235,30 @@ def build_message(office_key, text):
     return "\n".join(parts).strip()
 
 
+AFD_SEVERE_KEYWORDS = [
+    "TORNADO", "SEVERE THUNDERSTORM", "FLASH FLOOD EMERGENCY", "FLASH FLOOD WARNING",
+    "PARTICULARLY DANGEROUS SITUATION", "EXCESSIVE HEAT WARNING", "HIGH WIND WARNING",
+    "HURRICANE WARNING", "TROPICAL STORM WARNING", "STORM SURGE WARNING",
+]
+
+
+def _is_big_change(new_text, old_text):
+    """A newly-appearing severe-weather keyword bypasses the AM/PM
+    send cap below, per instruction -- routine wording tweaks between
+    issuances should not, but a genuine new severe signal always
+    should, immediately, regardless of how many times already sent
+    today."""
+    if not old_text:
+        return True
+    new_upper, old_upper = new_text.upper(), old_text.upper()
+    return any(kw in new_upper and kw not in old_upper for kw in AFD_SEVERE_KEYWORDS)
+
+
+def _afd_slot(now_local):
+    """AM = before noon, PM/evening = noon onward, per instruction."""
+    return "am" if now_local.hour < 12 else "pm"
+
+
 def process_office(office_key, state):
     cfg = OFFICES[office_key]
     text, source = fetch_afd(office_key)
@@ -236,12 +267,29 @@ def process_office(office_key, state):
         return
     print(f"[{office_key}] Fetched from {source}")
 
-    last_text = state.get(office_key, {}).get("last_text")
+    office_state = state.get(office_key, {})
+    last_text = office_state.get("last_text")
     if text == last_text:
         print(f"[{office_key}] No change -- not sending.")
         return
 
-    print(f"[{office_key}] New AFD detected -- sending.")
+    now_local = datetime.now(BEAUMONT_TZ)
+    today_str = now_local.strftime("%Y-%m-%d")
+    slot = _afd_slot(now_local)
+    big_change = _is_big_change(text, last_text)
+
+    if office_state.get("send_day") != today_str:
+        office_state["send_day"] = today_str
+        office_state["slots_sent"] = []
+
+    if not big_change and slot in office_state.get("slots_sent", []):
+        print(f"[{office_key}] Updated, but {slot.upper()} slot already sent today and nothing severe -- not resending (routine update).")
+        office_state["last_text"] = text
+        state[office_key] = office_state
+        save_state(state)
+        return
+
+    print(f"[{office_key}] Sending -- {'severe keyword newly appeared' if big_change else slot.upper() + ' slot'}.")
     message = build_message(office_key, text)
     print(f"[{office_key}] Message:\n{message[:500]}...")
 
@@ -252,7 +300,9 @@ def process_office(office_key, state):
         return
 
     print(f"[{office_key}] Sent successfully.")
-    state[office_key] = {"last_text": text}
+    office_state["last_text"] = text
+    office_state["slots_sent"] = list(set(office_state.get("slots_sent", []) + [slot]))
+    state[office_key] = office_state
     save_state(state)
 
 

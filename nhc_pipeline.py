@@ -55,14 +55,14 @@ NHC_URLS = {
 STATE_FILE = Path(__file__).parent / "pipeline_state.json"
 CENTRAL_UTC_OFFSET = 5  # CDT (UTC-5). Change to 6 for CST (winter).
 
-MAX_ATTEMPTS = 3
-RETRY_DELAY_SEC = 5
+MAX_ATTEMPTS = 2  # reduced from 3 -- speed, matches wxmodel_pipeline.py fix
+RETRY_DELAY_SEC = 2  # reduced from 5 -- speed, matches wxmodel_pipeline.py fix
 
 
 # ===========================================================================
 # FETCH -- IEM primary, NHC fallback, with retries + cache-busting on each
 # ===========================================================================
-def _http_get(url, timeout=20):
+def _http_get(url, timeout=10):  # reduced from 20 -- speed, matches wxmodel_pipeline.py fix
     req = urllib.request.Request(url, headers={"User-Agent": "nhc-pipeline/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="replace")
