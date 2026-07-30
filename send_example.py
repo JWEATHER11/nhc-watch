@@ -20,4 +20,14 @@ cycle_hour_utc = int(w.current_cycle_key().split("T")[1])
 message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient)
 print(message)
 w.deliver(message)
-print("SENT")
+print("SENT (combined cycle report)")
+
+for model_key, signal in ensemble_signals.items():
+    if not signal or not signal.get("findings"):
+        print(f"[{model_key}] No genesis findings this cycle.")
+        continue
+    _, model_name = w.ENSEMBLE_MODELS[model_key]
+    detail = w.build_ensemble_report(model_name, signal)
+    print(detail)
+    w.deliver(detail)
+    print(f"SENT ({model_name} genesis detail)")
