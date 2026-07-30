@@ -262,51 +262,86 @@ def describe_ndfd_change(current_totals, previous_totals, send_count_today):
     return True, changes, current_totals
 
 
-def build_setx_swla_section(outlook):
+PEAK_DAY_CALLOUT_THRESHOLD_PCT = 20
+WEEKDAY_NAMES_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _peak_day_note(seven_day):
+    """Plain fact, not commentary -- just finds the day with the
+    highest already-computed rain%, per instruction. Only called out
+    when it's a real standout (>= threshold), so a quiet week with
+    every day near 0% doesn't get a pointless 'best chance' line."""
+    if not seven_day:
+        return None
+    import datetime as _dt
+    now_local = _dt.datetime.now(w.BEAUMONT_TZ)
+    best_idx, best_pct = None, -1
+    for i, d in enumerate(seven_day):
+        if d and d["rain_pct"] > best_pct:
+            best_idx, best_pct = i, d["rain_pct"]
+    if best_idx is None or best_pct < PEAK_DAY_CALLOUT_THRESHOLD_PCT:
+        return None
+    day_date = now_local + _dt.timedelta(days=best_idx)
+    label = "Today" if best_idx == 0 else WEEKDAY_NAMES_FULL[day_date.weekday()]
+    return f"Best chance for coverage/heavier rain this week: {label} (~{best_pct}%)"
+
+
+def build_setx_swla_section(outlook, seven_day=None):
     if not outlook:
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
-    lines.append("<b>Short term</b> (day of + 2-3 days)")
-    # Euro and HRRR get top billing for precip per instruction; GFS
-    # still shown for cross-check.
-    parts = []
-    if outlook["short_euro_in"] is not None:
-        parts.append(f"Euro {outlook['short_euro_in']}\"")
-    if outlook["short_gfs_in"] is not None:
-        parts.append(f"GFS {outlook['short_gfs_in']}\"")
-    lines.append("- " + (", ".join(parts) if parts else "data unavailable") + " across the Houston-Beaumont-Port Arthur-Jasper-Lake Charles corridor")
-    lines.append(f"- Coverage: {_coverage_label(outlook['coverage_pct'])}")
-    # HRRR detail is NOT repeated here -- the dense-grid HRRR note
-    # (build_hrrr_grid_note) gets appended right after this section in
-    # wxmodel_pipeline.py and already covers the same today+tomorrow
-    # average, plus coverage, isolated max, and place name, so a
-    # second cruder HRRR line here was pure duplication.
+
+    # Day 1-2 (today + tomorrow, HRRR's real range): pulled from the
+    # 7-Day Forecast's own day 0/1 entries, which already use the
+    # dense 9x9 grid with HRRR weighted 65% / Euro 35%, per
+    # instruction -- day 1-2 must use HRRR on the large grid so a
+    # small storm can't fall entirely between points, and this avoids
+    # a second, different-grid answer for the same two days.
+    lines.append("<b>Next 2-3 days</b>")
+    if seven_day and seven_day[0] and seven_day[1]:
+        d0, d1 = seven_day[0], seven_day[1]
+        avg_pct = round((d0["rain_pct"] + d1["rain_pct"]) / 2)
+        if avg_pct < 10:
+            lines.append(f"- Dry -- HRRR/Euro blend shows mostly dry conditions across the corridor today and tomorrow.")
+        else:
+            cov = _coverage_word(avg_pct) or "some chances"
+            lines.append(f"- {cov.capitalize()} -- HRRR/Euro blend shows ~{avg_pct}% coverage today and tomorrow.")
+    else:
+        lines.append("- Data unavailable this cycle.")
     lines.append("")
-    lines.append("<b>Medium term</b> (3-5 days)")
+
+    lines.append("<b>Days 3-5</b>")
     parts = []
     if outlook["medium_euro_in"] is not None:
         parts.append(f"Euro {outlook['medium_euro_in']}\"")
     if outlook["medium_gfs_in"] is not None:
         parts.append(f"GFS {outlook['medium_gfs_in']}\"")
-    lines.append("- " + (", ".join(parts) if parts else "data unavailable"))
-    medium_word = _coverage_word(outlook.get("medium_coverage_pct"))
-    if medium_word:
-        lines.append(f"- Coverage: {medium_word}")
+    medium_word = _coverage_word(outlook.get("medium_coverage_pct")) or "data unavailable"
+    lines.append("- " + (", ".join(parts) if parts else "data unavailable") + f" -- {medium_word}")
     lines.append("")
-    lines.append("<b>Longer term</b> (5+ days)")
+
+    lines.append("<b>Day 5+</b>")
     lines.append("- " + _long_range_pattern(outlook.get("long_coverage_pct")))
-    long_word = _coverage_word(outlook.get("long_coverage_pct"))
-    if long_word:
-        lines.append(f"- Coverage: {long_word}")
     if outlook.get("max_long_total_in") is not None:
-        yn_1 = "Yes" if outlook.get("sees_1in_plus") else "No"
-        yn_3 = "Yes" if outlook.get("sees_3in_plus") else "No"
-        yn_5 = "Yes" if outlook.get("sees_5in_plus") else "No"
-        lines.append(f"- Additional rainfall potential beyond day 5: up to {outlook['max_long_total_in']}\" somewhere in the corridor (1\"+: {yn_1}, 3\"+: {yn_3}, 5\"+: {yn_5})")
+        if outlook.get("sees_1in_plus"):
+            if outlook.get("sees_5in_plus"):
+                tier = "5\"+"
+            elif outlook.get("sees_3in_plus"):
+                tier = "3\"+"
+            else:
+                tier = "1\"+"
+            lines.append(f"- Heavier totals possible beyond day 5 -- up to {outlook['max_long_total_in']}\" somewhere in the corridor, {tier} potential")
+        else:
+            lines.append(f"- Additional rainfall beyond day 5 looks light -- up to {outlook['max_long_total_in']}\" somewhere in the corridor, nothing pointing to 1\"+ totals")
     if outlook["heavy_potential"]:
         lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor (Euro/HRRR/GFS), watch for training storms/localized flooding")
     else:
         lines.append("- Heavy rain potential: nothing pointing to 1\"+/hr training storms right now")
+
+    peak_note = _peak_day_note(seven_day)
+    if peak_note:
+        lines.append("")
+        lines.append(f"- {peak_note}")
     return lines
 
 

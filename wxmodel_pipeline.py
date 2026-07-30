@@ -659,9 +659,21 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
 
     is_interesting = False
 
-    lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
     import setx_swla_extra as _sx2
-    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook))
+    # Fetched once, up front, and reused both for the short-term prose
+    # below AND the 7-Day Forecast section later -- this is the dense
+    # 9x9-grid, HRRR/Euro-blended data, per instruction: day 1-2 must
+    # use HRRR on the large grid so a small storm can't fall entirely
+    # between points, and the short-term summary shouldn't recompute a
+    # second, different answer from the old sparse 5-point grid.
+    try:
+        seven_day = _sx2.fetch_seven_day_forecast()
+    except Exception as e:
+        print(f"[Combined cycle] 7-day forecast unavailable (non-fatal): {e}")
+        seven_day = None
+
+    lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
+    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day))
     try:
         hrrr_grid_detail = _sx2.fetch_hrrr_grid_detail()
         hrrr_grid_lines = _sx2.build_hrrr_grid_note(hrrr_grid_detail)
@@ -678,12 +690,11 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     except Exception as e:
         print(f"[Combined cycle] Conditions detail unavailable (non-fatal): {e}")
     try:
-        seven_day = _sx2.fetch_seven_day_forecast()
         seven_day_lines = _sx2.build_seven_day_section(seven_day)
         if seven_day_lines:
             lines.extend(seven_day_lines)
     except Exception as e:
-        print(f"[Combined cycle] 7-day forecast unavailable (non-fatal): {e}")
+        print(f"[Combined cycle] 7-day forecast section build failed (non-fatal): {e}")
     if line_signal:
         note = _sx2.build_organized_line_note(line_signal)
         if note:
