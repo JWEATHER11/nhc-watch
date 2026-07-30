@@ -1173,13 +1173,13 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
                 lines.append(f"  {r['wpc_note']}")
 
     lines.append("")
-    lines.append("<b>\U0001F300 MAIN MODELS</b>")
+    lines.append("<b>\U0001F300 MAIN MODELS</b> (background reference, not a signal by itself)")
     for label, scan in (("GFS", gfs_scan), ("Euro", ecmwf_scan)):
         if scan and scan.get("results"):
             best = min(scan["results"], key=lambda r: r["mslp_mb"])
             region = classify_region(best["lat"], best["lon"])
-            wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
-            lines.append(f"- {label}: lowest {best['mslp_mb']} mb near {region} around {_fh_to_date_label(best['fh'])}{wind_str}")
+            wind_str = f", {best['wind_mph']} mph" if best.get("wind_mph") is not None else ""
+            lines.append(f"- {label}: {best['mslp_mb']} mb near {region} (around {_fh_to_date_label(best['fh'])}{wind_str})")
             # NOTE: raw deterministic MSLP dipping below a threshold
             # somewhere across a wide multi-day grid is normal
             # background noise on its own -- per instruction, this must
@@ -1194,8 +1194,8 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     if aifs_scan and aifs_scan.get("results"):
         best = min(aifs_scan["results"], key=lambda r: r["mslp_mb"])
         region = classify_region(best["lat"], best["lon"])
-        wind_str = f", {best['wind_mph']} mph nearby" if best.get("wind_mph") is not None else ""
-        lines.append(f"- ECMWF AIFS (AI): lowest {best['mslp_mb']} mb near {region} around {_fh_to_date_label(best['fh'])}{wind_str}")
+        wind_str = f", {best['wind_mph']} mph" if best.get("wind_mph") is not None else ""
+        lines.append(f"- ECMWF AIFS (AI): {best['mslp_mb']} mb near {region} (around {_fh_to_date_label(best['fh'])}{wind_str})")
     else:
         lines.append("- ECMWF AIFS (AI): data unavailable this cycle")
     for model_key, signal in ensemble_signals.items():
@@ -1203,8 +1203,10 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         if signal and signal.get("findings"):
             top = min(signal["findings"], key=lambda f: f["anomaly"])
             date_label = _fh_to_date_label(top["fh"])
-            spin = " -- real spin" if (top.get("vorticity") or 0) >= VORTICITY_NOTABLE_THRESHOLD else ""
-            lines.append(f"- {model_name}: {tier_label(top['pct'])} of tropical development near {top['region']}, around {date_label}{spin}")
+            spin = ", real spin" if (top.get("vorticity") or 0) >= VORTICITY_NOTABLE_THRESHOLD else ""
+            agreeing = top.get("models_agreeing") or []
+            agree_str = f" ({'+'.join(agreeing)} agree)" if len(agreeing) > 1 else ""
+            lines.append(f"- {model_name}: {tier_label(top['pct'])} of tropical development near {top['region']}, around {date_label}{spin}{agree_str}")
             if len(signal["findings"]) > 1:
                 lines.append(f"  ({len(signal['findings']) - 1} other spot{'s' if len(signal['findings']) > 2 else ''} also flagged -- worth a look at the raw data)")
             is_interesting = True

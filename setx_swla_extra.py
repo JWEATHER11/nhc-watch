@@ -686,9 +686,14 @@ def fetch_afd_front_mention():
         sentences = re.split(r"(?<=[.!?])\s+", collapsed)
         for i, sentence in enumerate(sentences):
             if any(kw in sentence.upper() for kw in AFD_FRONT_KEYWORDS):
-                excerpt = " ".join(sentences[i:i + 2]).strip()
-                if len(excerpt) > 400:
-                    excerpt = excerpt[:397].rstrip() + "..."
+                # Just the matched sentence -- an earlier version grabbed the
+                # next one too, which usually wasn't about the front at all
+                # and just added clutter. Also strips a leading "- " left
+                # over from the AFD's own internal bullet formatting, which
+                # otherwise looks like a broken nested list once quoted.
+                excerpt = sentences[i].strip().lstrip("-").strip()
+                if len(excerpt) > 300:
+                    excerpt = excerpt[:297].rstrip() + "..."
                 mentions.append({"office": cfg["label"], "excerpt": excerpt})
                 break
     return mentions or None
@@ -700,25 +705,26 @@ def build_front_signal_section(signal, afd_front_mentions=None):
     lines = []
     numeric_flagged = bool(signal and signal["front_signal"])
     if numeric_flagged or afd_front_mentions:
-        season_tag = " (summer-adjusted threshold)" if signal and signal.get("season") == "summer" else ""
-        lines.append(f"FRONT WATCH{season_tag}:")
+        season_tag = " (summer-adjusted)" if signal and signal.get("season") == "summer" else ""
+        lines.append(f"<b>\U0001F32C️ FRONT WATCH</b>{season_tag}")
         if signal:
             dp_threshold_used = signal.get("dp_threshold_used", DEWPOINT_DROP_THRESHOLD_F)
             if signal["dewpoint_drop_f"] >= dp_threshold_used:
-                when = f", {signal['dewpoint_drop_time']}" if signal.get("dewpoint_drop_time") else ""
-                lines.append(f"- Dewpoints dropping sharply and widely across the region -- up to {signal['dewpoint_drop_f']}F drop within 24h{when} ({signal.get('dewpoint_agreement_pct', 0)}% of corridor points agree)")
+                when = f" ({signal['dewpoint_drop_time']})" if signal.get("dewpoint_drop_time") else ""
+                lines.append(f"- Dewpoints dropping sharply -- up to {signal['dewpoint_drop_f']}F in 24h{when}, {signal.get('dewpoint_agreement_pct', 0)}% of the corridor agrees")
             if signal["shift_to_north"]:
                 when = f" {signal['wind_shift_time']}" if signal.get("wind_shift_time") else ""
-                lines.append(f"- Winds shifting more out of the north across most of the region{when} -- front pushing through")
+                lines.append(f"- Winds turning more northerly{when} -- front pushing through")
             if not numeric_flagged and afd_front_mentions:
-                lines.append(f"- Model numbers alone not yet at full regional agreement (dewpoint {signal.get('dewpoint_agreement_pct', 0)}%, temp {signal.get('temp_agreement_pct', 0)}%) -- corroborated below by NWS's own discussion")
+                lines.append(f"- Models alone aren't in full agreement yet (dewpoint {signal.get('dewpoint_agreement_pct', 0)}%, temp {signal.get('temp_agreement_pct', 0)}%), but NWS's forecast discussion backs it up:")
         if afd_front_mentions:
-            lines.append("- NWS forecaster discussion also mentions a front:")
+            if numeric_flagged:
+                lines.append("- NWS forecaster discussion also mentions a front:")
             for mention in afd_front_mentions:
-                lines.append(f"  {mention['office']}: \"{mention['excerpt']}\"")
+                lines.append(f"    “{mention['excerpt']}” — {mention['office']}")
     if signal and signal["cooling_signal"]:
-        when = f", {signal['temp_drop_time']}" if signal.get("temp_drop_time") else ""
-        lines.append(f"- Meaningful, widespread cooling signal (Euro): up to {signal['temp_drop_f']}F within 24h{when} across most of the corridor ({signal.get('temp_agreement_pct', 0)}% of corridor points agree)")
+        when = f" ({signal['temp_drop_time']})" if signal.get("temp_drop_time") else ""
+        lines.append(f"- Meaningful cooling signal (Euro): up to {signal['temp_drop_f']}F in 24h{when}, {signal.get('temp_agreement_pct', 0)}% of the corridor agrees")
     return lines or None
 
 
