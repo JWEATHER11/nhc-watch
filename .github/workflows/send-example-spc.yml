@@ -1,0 +1,22 @@
+name: Send Example SPC (one-off)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Send example
+        env:
+          SPC_TELEGRAM_BOT_TOKEN: ${{ secrets.SPC_TELEGRAM_BOT_TOKEN }}
+          SPC_TELEGRAM_CHAT_ID: ${{ secrets.SPC_TELEGRAM_CHAT_ID }}
+          SPC_TELEGRAM_CHAT_ID_2: ${{ secrets.SPC_TELEGRAM_CHAT_ID_2 }}
+        run: python send_example_spc.py
