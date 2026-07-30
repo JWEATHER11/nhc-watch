@@ -223,9 +223,24 @@ def telegram_configured():
     return bool(os.environ.get("WXMODEL_TELEGRAM_BOT_TOKEN")) and bool(os.environ.get("WXMODEL_TELEGRAM_CHAT_ID"))
 
 
+def _telegram_chat_ids():
+    """Every chat this bot delivers to -- the original chat, plus any
+    additional destinations configured via WXMODEL_TELEGRAM_CHAT_ID_2,
+    _3, etc. Lets the same feed reach more than one chat (e.g. a
+    meteorologist team group) without touching the original one."""
+    ids = [os.environ["WXMODEL_TELEGRAM_CHAT_ID"]]
+    i = 2
+    while True:
+        extra = os.environ.get(f"WXMODEL_TELEGRAM_CHAT_ID_{i}")
+        if not extra:
+            break
+        ids.append(extra)
+        i += 1
+    return ids
+
+
 def send_telegram(text):
     bot_token = os.environ["WXMODEL_TELEGRAM_BOT_TOKEN"]
-    chat_id = os.environ["WXMODEL_TELEGRAM_CHAT_ID"]
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     max_len = 4000
     # Split on line boundaries, never mid-character -- a raw character
@@ -247,23 +262,33 @@ def send_telegram(text):
     if current:
         chunks.append(current)
     chunks = chunks or [text]
-    for idx, chunk in enumerate(chunks, 1):
-        payload = json.dumps({"chat_id": chat_id, "text": chunk, "parse_mode": "HTML"}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        last_err = None
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            try:
-                with urllib.request.urlopen(req, timeout=20) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                    if result.get("ok"):
-                        break
-                    last_err = result.get("description", "Unknown Telegram error")
-            except Exception as e:
-                last_err = str(e)
-            if attempt < MAX_ATTEMPTS:
-                time.sleep(RETRY_DELAY_SEC)
-        else:
-            raise RuntimeError(f"Telegram send failed after {MAX_ATTEMPTS} attempts on chunk {idx}: {last_err}")
+    chat_ids = _telegram_chat_ids()
+    chat_errors = {}
+    for chat_id in chat_ids:
+        try:
+            for idx, chunk in enumerate(chunks, 1):
+                payload = json.dumps({"chat_id": chat_id, "text": chunk, "parse_mode": "HTML"}).encode("utf-8")
+                req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+                last_err = None
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    try:
+                        with urllib.request.urlopen(req, timeout=20) as resp:
+                            result = json.loads(resp.read().decode("utf-8"))
+                            if result.get("ok"):
+                                break
+                            last_err = result.get("description", "Unknown Telegram error")
+                    except Exception as e:
+                        last_err = str(e)
+                    if attempt < MAX_ATTEMPTS:
+                        time.sleep(RETRY_DELAY_SEC)
+                else:
+                    raise RuntimeError(f"chunk {idx}: {last_err}")
+        except Exception as e:
+            chat_errors[chat_id] = str(e)
+            print(f"Telegram send to {chat_id} failed: {e}")
+
+    if len(chat_errors) == len(chat_ids):
+        raise RuntimeError(f"Telegram send failed to ALL configured chats: {chat_errors}")
 
 
 def deliver(text):
