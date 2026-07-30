@@ -228,7 +228,25 @@ def send_telegram(text):
     chat_id = os.environ["WXMODEL_TELEGRAM_CHAT_ID"]
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     max_len = 4000
-    chunks = [text[i:i + max_len] for i in range(0, len(text), max_len)] or [text]
+    # Split on line boundaries, never mid-character -- a raw character
+    # split could land inside an HTML tag like "<b>" (splitting a long
+    # active-storm message right in half of a tag), which Telegram
+    # would then reject entirely with an HTML parse error, on exactly
+    # the kind of long, critical message where that matters most.
+    # Every <b>...</b> in this codebase stays within a single line, so
+    # splitting only between lines is guaranteed safe.
+    chunks = []
+    current = ""
+    for line in text.split("\n"):
+        candidate = current + ("\n" if current else "") + line
+        if len(candidate) > max_len and current:
+            chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    chunks = chunks or [text]
     for idx, chunk in enumerate(chunks, 1):
         payload = json.dumps({"chat_id": chat_id, "text": chunk, "parse_mode": "HTML"}).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
