@@ -483,13 +483,42 @@ def _is_northerly(deg):
     return deg >= NORTHERLY_MIN_DEG or deg <= NORTHERLY_MAX_DEG
 
 
+def _format_front_time(iso_str):
+    """Converts an hourly UTC timestamp into a plain 'today/tomorrow/
+    Weekday around HH AM/PM' label in Beaumont time, per instruction --
+    the raw signal only ever reported a magnitude, never when to
+    actually expect it."""
+    if not iso_str:
+        return None
+    import datetime as _dt
+    try:
+        dt_utc = _dt.datetime.fromisoformat(iso_str).replace(tzinfo=_dt.timezone.utc)
+    except ValueError:
+        return None
+    dt_local = dt_utc.astimezone(w.BEAUMONT_TZ)
+    now_local = _dt.datetime.now(w.BEAUMONT_TZ)
+    day_diff = (dt_local.date() - now_local.date()).days
+    if day_diff == 0:
+        day_label = "today"
+    elif day_diff == 1:
+        day_label = "tomorrow"
+    else:
+        weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_label = weekday_names[dt_local.weekday()]
+    return f"{day_label} around {dt_local.strftime('%I %p').lstrip('0')}"
+
+
 def fetch_front_signal():
-    """Checks Euro (primary) and GFS (cross-check) hourly dewpoint,
-    wind direction, and temperature at EACH corridor point separately
-    (Beaumont/Port Arthur, Houston, Jasper, Lake Charles) over the next
-    4 days. Only flags a front/cooling signal when a real majority of
-    the points agree -- a single point showing a swing is normal model
-    noise, not a regional signal, per instruction."""
+    """Checks Euro (primary) hourly dewpoint, wind direction, and
+    temperature at EACH corridor point separately (Beaumont/Port
+    Arthur, Houston, Jasper, Lake Charles, per SETX_SWLA_POINTS) over
+    the next 4 days. Only flags a front/cooling signal when a real
+    majority of the points agree -- a single point showing a swing is
+    normal model noise, not a regional signal, per instruction. Also
+    tracks the actual local day/time the sharpest drop happens, and
+    what fraction of points agree, per instruction -- a bare
+    yes/no + magnitude doesn't say when to expect it or how strong the
+    regional agreement really is."""
     lat_str = ",".join(str(p[0]) for p in SETX_SWLA_POINTS)
     lon_str = ",".join(str(p[1]) for p in SETX_SWLA_POINTS)
     cache_buster = int(time.time())
@@ -520,37 +549,62 @@ def fetch_front_signal():
     north_shift_points = 0
     max_dewpoint_drop = 0.0
     max_temp_drop = 0.0
+    dewpoint_drop_time = None
+    temp_drop_time = None
+    wind_shift_time = None
 
     for point in euro_points:
         hourly = point.get("hourly", {})
-        dp = [v for v in hourly.get("dewpoint_2m", []) if v is not None]
-        temp = [v for v in hourly.get("temperature_2m", []) if v is not None]
+        times = hourly.get("time", [])
+        dp = hourly.get("dewpoint_2m", [])
+        temp = hourly.get("temperature_2m", [])
         wdir = hourly.get("wind_direction_10m", [])
 
-        point_dp_drop = 0.0
-        if len(dp) >= 25:
-            for i in range(len(dp) - 24):
-                point_dp_drop = max(point_dp_drop, dp[i] - dp[i + 24])
+        # NOTE: indices must line up with `times` -- do NOT filter out
+        # None values before this loop, or the index-to-time mapping
+        # silently shifts and points at the wrong hour entirely.
+        point_dp_drop, point_dp_idx = 0.0, None
+        for i in range(len(dp) - 24):
+            if dp[i] is None or dp[i + 24] is None:
+                continue
+            drop = dp[i] - dp[i + 24]
+            if drop > point_dp_drop:
+                point_dp_drop, point_dp_idx = drop, i + 24
         if point_dp_drop >= DEWPOINT_DROP_THRESHOLD_F:
             dewpoint_drop_points += 1
-        max_dewpoint_drop = max(max_dewpoint_drop, point_dp_drop)
+        if point_dp_drop > max_dewpoint_drop:
+            max_dewpoint_drop = point_dp_drop
+            if point_dp_idx is not None and point_dp_idx < len(times):
+                dewpoint_drop_time = times[point_dp_idx]
 
-        point_temp_drop = 0.0
-        if len(temp) >= 25:
-            for i in range(len(temp) - 24):
-                point_temp_drop = max(point_temp_drop, temp[i] - temp[i + 24])
+        point_temp_drop, point_temp_idx = 0.0, None
+        for i in range(len(temp) - 24):
+            if temp[i] is None or temp[i + 24] is None:
+                continue
+            drop = temp[i] - temp[i + 24]
+            if drop > point_temp_drop:
+                point_temp_drop, point_temp_idx = drop, i + 24
         if point_temp_drop >= TEMP_DROP_THRESHOLD_F:
             temp_drop_points += 1
-        max_temp_drop = max(max_temp_drop, point_temp_drop)
+        if point_temp_drop > max_temp_drop:
+            max_temp_drop = point_temp_drop
+            if point_temp_idx is not None and point_temp_idx < len(times):
+                temp_drop_time = times[point_temp_idx]
 
-        if wdir:
+        if wdir and times:
             early = [d for d in wdir[:12] if d is not None]
-            later = [d for d in wdir[-24:] if d is not None]
+            later_vals, later_times = wdir[-24:], times[-24:]
+            later = [d for d in later_vals if d is not None]
             if early and later:
                 early_north = sum(1 for d in early if _is_northerly(d)) / len(early)
                 later_north = sum(1 for d in later if _is_northerly(d)) / len(later)
                 if later_north >= 0.5 and early_north < 0.3:
                     north_shift_points += 1
+                    if wind_shift_time is None:
+                        for d, t in zip(later_vals, later_times):
+                            if d is not None and _is_northerly(d):
+                                wind_shift_time = t
+                                break
 
     dewpoint_widespread = (dewpoint_drop_points / n_points) >= FRONT_AGREEMENT_FRACTION
     temp_widespread = (temp_drop_points / n_points) >= FRONT_AGREEMENT_FRACTION
@@ -558,8 +612,13 @@ def fetch_front_signal():
 
     return {
         "dewpoint_drop_f": round(max_dewpoint_drop, 1),
+        "dewpoint_drop_time": _format_front_time(dewpoint_drop_time),
+        "dewpoint_agreement_pct": round(100 * dewpoint_drop_points / n_points),
         "temp_drop_f": round(max_temp_drop, 1),
+        "temp_drop_time": _format_front_time(temp_drop_time),
+        "temp_agreement_pct": round(100 * temp_drop_points / n_points),
         "shift_to_north": wind_widespread,
+        "wind_shift_time": _format_front_time(wind_shift_time),
         "front_signal": dewpoint_widespread or wind_widespread,
         "cooling_signal": temp_widespread,
     }
@@ -572,11 +631,14 @@ def build_front_signal_section(signal):
     if signal["front_signal"]:
         lines.append("FRONT WATCH:")
         if signal["dewpoint_drop_f"] >= DEWPOINT_DROP_THRESHOLD_F:
-            lines.append(f"- Dewpoints dropping sharply and widely across the region -- up to {signal['dewpoint_drop_f']}F drop within 24h")
+            when = f", {signal['dewpoint_drop_time']}" if signal.get("dewpoint_drop_time") else ""
+            lines.append(f"- Dewpoints dropping sharply and widely across the region -- up to {signal['dewpoint_drop_f']}F drop within 24h{when} ({signal.get('dewpoint_agreement_pct', 0)}% of corridor points agree)")
         if signal["shift_to_north"]:
-            lines.append("- Winds shifting more out of the north across most of the region -- front pushing through")
+            when = f" {signal['wind_shift_time']}" if signal.get("wind_shift_time") else ""
+            lines.append(f"- Winds shifting more out of the north across most of the region{when} -- front pushing through")
     if signal["cooling_signal"]:
-        lines.append(f"- Meaningful, widespread cooling signal (Euro): up to {signal['temp_drop_f']}F within 24h across most of the corridor")
+        when = f", {signal['temp_drop_time']}" if signal.get("temp_drop_time") else ""
+        lines.append(f"- Meaningful, widespread cooling signal (Euro): up to {signal['temp_drop_f']}F within 24h{when} across most of the corridor ({signal.get('temp_agreement_pct', 0)}% of corridor points agree)")
     return lines or None
 
 
@@ -702,21 +764,23 @@ def build_trending_message(cycle_hour_utc, history):
     if cur_dp is not None and prev_dp is not None and (prev_dp - cur_dp) >= 3.0:
         notes.append(f"Dewpoints dropping over the last {len(history)} runs.")
 
-    # Front trend.
+    # Front trend -- includes the actual before/after numbers, per
+    # instruction, not just a bare "stronger/weaker" sentence with
+    # nothing behind it.
     cur_drop = newest.get("temp_drop_f")
     prev_drop = oldest.get("temp_drop_f")
     if cur_drop is not None and prev_drop is not None:
         diff = cur_drop - prev_drop
         if diff >= 3.0:
-            notes.append(f"Stronger cold front signal developing over the last {len(history)} runs.")
+            notes.append(f"Stronger cold front signal developing over the last {len(history)} runs -- max temp drop up from {prev_drop}F to {cur_drop}F within a 24h window.")
         elif diff <= -3.0:
-            notes.append(f"Cold front signal weakening over the last {len(history)} runs.")
+            notes.append(f"Cold front signal weakening over the last {len(history)} runs -- max temp drop down from {prev_drop}F to {cur_drop}F within a 24h window.")
     cur_front = newest.get("front_signal")
     prev_front = oldest.get("front_signal")
     if cur_front and not prev_front:
-        notes.append("Front signal newly appearing in recent runs.")
+        notes.append(f"Front signal newly appearing in recent runs -- {cur_drop}F max temp drop within 24h now crossing the regional-agreement threshold.")
     elif prev_front and not cur_front:
-        notes.append("Front signal fading in recent runs.")
+        notes.append(f"Front signal fading in recent runs -- max temp drop down to {cur_drop}F, no longer widespread enough across the corridor.")
 
     if not notes:
         return f"Trending ({cycle_hour_utc:02d}Z): No significant trend -- rain, tropical, and temperature signals holding similar over the last {len(history)} runs."
