@@ -2,6 +2,7 @@
 """setx_swla_extra.py -- Expanded local SETX/SWLA rainfall outlook."""
 
 import json
+import re
 import time
 
 import wxmodel_pipeline as w
@@ -661,7 +662,11 @@ def fetch_afd_front_mention():
     our narrow Euro-only numeric point-check doesn't cross threshold
     on yet. Corroboration only, never a replacement for the numeric
     check -- if the forecaster ISN'T calling one either, that's a
-    meaningful signal too."""
+    meaningful signal too.
+
+    Returns the actual sentence(s) around the mention, per
+    instruction -- not just a bare "mentions a front" fact with no
+    detail of what they actually said or which days."""
     try:
         import nws_afd_pipeline as _afd
     except Exception as e:
@@ -675,8 +680,17 @@ def fetch_afd_front_mention():
             continue
         if not text:
             continue
-        if any(kw in text.upper() for kw in AFD_FRONT_KEYWORDS):
-            mentions.append(cfg["label"])
+        # Collapse the AFD's hard line-wraps into a single line first,
+        # so a sentence isn't chopped up by mid-sentence newlines.
+        collapsed = " ".join(text.split())
+        sentences = re.split(r"(?<=[.!?])\s+", collapsed)
+        for i, sentence in enumerate(sentences):
+            if any(kw in sentence.upper() for kw in AFD_FRONT_KEYWORDS):
+                excerpt = " ".join(sentences[i:i + 2]).strip()
+                if len(excerpt) > 400:
+                    excerpt = excerpt[:397].rstrip() + "..."
+                mentions.append({"office": cfg["label"], "excerpt": excerpt})
+                break
     return mentions or None
 
 
@@ -699,7 +713,9 @@ def build_front_signal_section(signal, afd_front_mentions=None):
             if not numeric_flagged and afd_front_mentions:
                 lines.append(f"- Model numbers alone not yet at full regional agreement (dewpoint {signal.get('dewpoint_agreement_pct', 0)}%, temp {signal.get('temp_agreement_pct', 0)}%) -- corroborated below by NWS's own discussion")
         if afd_front_mentions:
-            lines.append(f"- NWS forecaster discussion also mentions a front: {', '.join(afd_front_mentions)}")
+            lines.append("- NWS forecaster discussion also mentions a front:")
+            for mention in afd_front_mentions:
+                lines.append(f"  {mention['office']}: \"{mention['excerpt']}\"")
     if signal and signal["cooling_signal"]:
         when = f", {signal['temp_drop_time']}" if signal.get("temp_drop_time") else ""
         lines.append(f"- Meaningful, widespread cooling signal (Euro): up to {signal['temp_drop_f']}F within 24h{when} across most of the corridor ({signal.get('temp_agreement_pct', 0)}% of corridor points agree)")
