@@ -81,7 +81,10 @@ def extract_fix_time(text: str):
     if not m:
         return None
     zulu = m.group(1)
-    return {"zulu": zulu, "local": zulu_to_central(zulu) or zulu}def extract_central_pressure(text: str):
+    return {"zulu": zulu, "local": zulu_to_central(zulu) or zulu}
+
+
+def extract_central_pressure(text: str):
     m = re.search(r"^\s*D\.\s*(?:[A-Z]+\s+)*?(\d{3,4})\s*MB", text, re.I | re.M)
     if m:
         return f"{m.group(1)} mb"
@@ -164,7 +167,8 @@ def extract_aircraft(text: str):
 # ---------------------------------------------------------------------------
 def load_state():
     if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text())return {}
+        return json.loads(STATE_FILE.read_text())
+    return {}
 
 
 def save_state(state: dict):
