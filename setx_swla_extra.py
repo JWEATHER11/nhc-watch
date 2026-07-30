@@ -1021,25 +1021,56 @@ def fetch_hrrr_grid_detail():
     {HRRR_GRID_ROWS}x{HRRR_GRID_COLS} grid over the corridor. Returns
     both the broad-scale average total and the single highest total
     found anywhere in the grid (the 'isolated higher area' signal),
-    with an approximate nearby place name."""
+    with an approximate nearby place name. Falls back to a GFS/Euro
+    blend on the same grid if the HRRR mirror itself fails, so this
+    section doesn't just silently disappear for the cycle."""
     grid_points = _hrrr_grid_points()
     lat_str = ",".join(str(p[0]) for p in grid_points)
     lon_str = ",".join(str(p[1]) for p in grid_points)
     cache_buster = int(time.time())
-    url = (
-        f"https://api.open-meteo.com/v1/forecast"
-        f"?latitude={lat_str}&longitude={lon_str}"
-        f"&daily=precipitation_sum&models=ncep_hrrr_conus"
-        f"&forecast_days=2&_cb={cache_buster}"
-    )
-    data = w._fetch_with_retries_bytes(url, "HRRRGrid")
-    if not data:
-        return None
-    try:
-        points = json.loads(data.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return None
-    if not isinstance(points, list) or len(points) != len(grid_points):
+
+    def fetch_grid_points(models_param=None):
+        models_bit = f"&models={models_param}" if models_param else ""
+        url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat_str}&longitude={lon_str}"
+            f"&daily=precipitation_sum{models_bit}"
+            f"&forecast_days=2&_cb={cache_buster}"
+        )
+        data = w._fetch_with_retries_bytes(url, f"HRRRGrid:{models_param or 'hrrr'}")
+        if not data:
+            return None
+        try:
+            pts = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        return pts if isinstance(pts, list) and len(pts) == len(grid_points) else None
+
+    points = fetch_grid_points(models_param="ncep_hrrr_conus")
+    source_label = "HRRR"
+    if not points:
+        gfs_points = fetch_grid_points(models_param="gfs_seamless")
+        euro_points = fetch_grid_points(models_param="ecmwf_ifs025")
+        if gfs_points and euro_points:
+            points = []
+            for gp, ep in zip(gfs_points, euro_points):
+                g_daily = gp.get("daily", {}).get("precipitation_sum", [None, None])
+                e_daily = ep.get("daily", {}).get("precipitation_sum", [None, None])
+                blended = []
+                for i in range(2):
+                    gv = g_daily[i] if i < len(g_daily) else None
+                    ev = e_daily[i] if i < len(e_daily) else None
+                    if gv is not None and ev is not None:
+                        blended.append((gv + ev) / 2)
+                    else:
+                        blended.append(gv if gv is not None else ev)
+                points.append({"daily": {"precipitation_sum": blended}})
+            source_label = "GFS/Euro (HRRR unavailable)"
+        elif gfs_points or euro_points:
+            points = gfs_points or euro_points
+            source_label = "GFS (HRRR/Euro unavailable)" if gfs_points else "Euro (HRRR/GFS unavailable)"
+
+    if not points:
         return None
 
     totals_in = []
@@ -1072,16 +1103,18 @@ def fetch_hrrr_grid_detail():
         "max_near": max_label,
         "coverage_pct": coverage_pct,
         "coverage_word": _coverage_word(coverage_pct),
+        "source_label": source_label,
     }
 
 
 def build_hrrr_grid_note(detail):
     if not detail:
         return None
-    lines = [f"- HRRR grid (today + tomorrow): broad-scale ~{detail['avg_total_in']}\" average across the corridor, {_coverage_label(detail['coverage_pct'])}"]
+    label = detail.get("source_label", "HRRR")
+    lines = [f"- {label} grid (today + tomorrow): broad-scale ~{detail['avg_total_in']}\" average across the corridor, {_coverage_label(detail['coverage_pct'])}"]
     if detail["max_total_in"] > detail["avg_total_in"] + 0.3:
         near = f" near {detail['max_near']}" if detail["max_near"] else ""
-        lines.append(f"- Isolated higher totals possible: up to {detail['max_total_in']}\"{near} in the HRRR grid")
+        lines.append(f"- Isolated higher totals possible: up to {detail['max_total_in']}\"{near} in the {label} grid")
     return lines
 
 
@@ -1265,7 +1298,7 @@ def build_seven_day_section(days):
         return None
     lines = ["", "<b>7-Day Forecast</b>"]
     import datetime as _dt
-    now_local = _dt.datetime.now(BEAUMONT_TZ)
+    now_local = _dt.datetime.now(w.BEAUMONT_TZ)
     weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     day_labels = []
     for i in range(7):
