@@ -320,40 +320,21 @@ def main():
         mission["lowest_pressure_when"] = fix_time["local"]
     state["mission"] = mission
 
-    facts_lines = [f"Fix time: {fix_time['local']}"]
-    if aircraft:
-        facts_lines.append(f"Aircraft: {aircraft}")
-    if location:
-        facts_lines.append(f"Location: {location}")
-    if pressure_mb:
-        facts_lines.append(f"Central pressure this fix: {pressure_mb}")
-    if eye:
-        facts_lines.append(f"Eye: {eye}")
-    if fl_wind_kt:
-        facts_lines.append(f"Flight-level wind this fix: {with_mph(fl_wind_kt)}")
-    if sfc_wind_kt:
-        facts_lines.append(f"Surface wind (SFMR) this fix: {with_mph(sfc_wind_kt)}")
-    if mission.get("peak_fl_wind_kt"):
-        facts_lines.append(f"Peak flight-level wind THIS MISSION so far: {with_mph(mission['peak_fl_wind_kt'])} at {mission['peak_fl_wind_when']}")
-    if mission.get("peak_sfc_wind_kt"):
-        facts_lines.append(f"Peak surface wind THIS MISSION so far: {with_mph(mission['peak_sfc_wind_kt'])} at {mission['peak_sfc_wind_when']}")
-    if mission.get("lowest_pressure_mb"):
-        facts_lines.append(f"Lowest pressure THIS MISSION so far: {mission['lowest_pressure_mb']} mb at {mission['lowest_pressure_when']}")
-    header_lines = [f"Recon Fix -- {fix_time['local']}"]
+    header_lines = [f"✈️ <b>Recon Fix -- {fix_time['local']}</b>"]
     if aircraft:
         header_lines.append(f"Aircraft: {aircraft}")
     if location:
-        header_lines.append(f"Location: {location}")
+        header_lines.append(f"📍 Location: {location}")
     if pressure_mb:
-        header_lines.append(f"Pressure: {pressure_mb}")
+        header_lines.append(f"📊 Pressure: {pressure_mb}")
     if eye:
-        header_lines.append(f"Eye: {eye}")
+        header_lines.append(f"👁️ Eye: {eye}")
     if fl_wind_kt:
-        header_lines.append(f"Flight-level wind: {with_mph(fl_wind_kt)}")
+        header_lines.append(f"💨 Flight-level wind: {with_mph(fl_wind_kt)}")
     if sfc_wind_kt:
-        header_lines.append(f"Surface wind: {with_mph(sfc_wind_kt)}")
+        header_lines.append(f"💨 Surface wind: {with_mph(sfc_wind_kt)}")
     header_lines.append("")
-    header_lines.append("-- This mission so far --")
+    header_lines.append("📈 -- This mission so far --")
     if mission.get("peak_fl_wind_kt"):
         header_lines.append(f"Peak flight-level wind: {with_mph(mission['peak_fl_wind_kt'])} ({mission['peak_fl_wind_when']})")
     if mission.get("peak_sfc_wind_kt"):
