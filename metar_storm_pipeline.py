@@ -29,9 +29,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 STATE_FILE = Path(__file__).parent / "metar_storm_state.json"
+BEAUMONT_TZ = ZoneInfo("America/Chicago")
 MAX_ATTEMPTS = 2
 RETRY_DELAY_SEC = 2
 
@@ -135,13 +138,27 @@ def classify_hazards(ob):
     return hazards
 
 
+HAZARD_EMOJI = {
+    "funnel": "🌪️",
+    "thunderstorm": "⛈️",
+    "hail": "🧊",
+    "gust": "💨",
+    "heavy_rain": "💧",
+}
+
+
 def build_message(new_hazards_by_station):
-    lines = ["<b>\U0001F6A8 Real Storm Watch</b> -- station observations (not model)", ""]
+    now_local = datetime.now(BEAUMONT_TZ)
+    lines = [
+        "🚨 <b>Real Storm Watch</b> -- station observations (not model)",
+        f"📅 {now_local.strftime('%A, %b %-d %I:%M %p').replace(' 0', ' ')} (Beaumont time)",
+        "",
+    ]
     for station, hazards in new_hazards_by_station.items():
         name = CORRIDOR_STATIONS.get(station, station)
         lines.append(f"<b>{name} ({station})</b>")
-        for desc in hazards.values():
-            lines.append(f"- {desc}")
+        for hazard_key, desc in hazards.items():
+            lines.append(f"{HAZARD_EMOJI.get(hazard_key, '⚠️')} {desc}")
         lines.append("")
     return "\n".join(lines).rstrip()
 
