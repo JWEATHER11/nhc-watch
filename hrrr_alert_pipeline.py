@@ -417,18 +417,23 @@ def _get_href_corroboration(state):
     return cached.get("data")
 
 
+HREF_NOTABLE_THRESHOLD_PCT = 40
+
+
 def _href_summary_line(href_data, now_local):
-    """One line: what real HREF (not the coarse GEFS that tested
-    unusable) shows for today and tomorrow, as a second opinion next
-    to HRRR's own numbers -- corridor-wide max % chance of >=0.5in,
-    named to the actual weekday like everything else in this message."""
+    """A second, independent high-res model (HREF, 10 separate runs)
+    checking the same question as the Rain line above. First two
+    phrasings ("X% agreeing", "X of 10 runs agree") both still read as
+    unexplained jargon. Plain "X% chance of rain" is the one phrasing
+    everyone already knows from a normal weather forecast, so that's
+    what this uses -- just the single most notable finding, if any."""
     if not href_data:
         return None
     try:
         cycle = datetime.fromisoformat(href_data["cycle"])
     except (KeyError, ValueError):
         return None
-    parts = []
+    best = None  # (day_label, city, pct)
     for day_key, offset_hours in (("day1", 12), ("day2", 36)):
         sampled = href_data.get(day_key)
         if not sampled:
@@ -443,13 +448,12 @@ def _href_summary_line(href_data, now_local):
         else:
             label = weekday
         best_city, best_pct = max(sampled.items(), key=lambda kv: kv[1])
-        if best_pct >= 10:
-            parts.append(f"{label} {best_pct}% near {best_city}")
-        else:
-            parts.append(f"{label} {best_pct}%")
-    if not parts:
+        if best is None or best_pct > best[2]:
+            best = (label, best_city, best_pct)
+    if best is None or best[2] < HREF_NOTABLE_THRESHOLD_PCT:
         return None
-    return "🎲 Other models agreeing on 0.5\"+ rain: " + " · ".join(parts)
+    label, city, pct = best
+    return f"🎲 Second opinion (separate high-res model): {pct}% chance {city} sees 0.5\"+ rain {label}"
 
 
 def process_hrrr_alert(state):
