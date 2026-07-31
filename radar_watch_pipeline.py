@@ -293,27 +293,27 @@ def _radar_trend_line(history):
 def build_radar_message(current, reasons, trend_line=None):
     now_local = datetime.now(BEAUMONT_TZ)
     lines = [
-        "<b>\U0001F4E1 Radar Watch</b> -- real observation, not model",
-        now_local.strftime("%b %-d %I:%M %p").replace(" 0", " "),
+        "📡 <b>Radar Watch</b> -- real observation, not model",
+        f"📅 {now_local.strftime('%A, %b %-d %I:%M %p').replace(' 0', ' ')} (Beaumont time)",
         "",
     ]
     for r in reasons:
-        lines.append(f"- {r}")
+        lines.append(f"🔔 {r}")
     if trend_line:
-        lines.append(f"- {trend_line}")
+        lines.append(f"📈 {trend_line}")
     lines.append("")
     if current["storm_cities"]:
-        lines.append(f"Currently storm-intensity near: {', '.join(current['storm_cities'])}")
+        lines.append(f"⛈️ Currently storm-intensity near: {', '.join(current['storm_cities'])}")
     if current.get("max_dbz") is not None:
         near = f" near {current['max_near']}" if current.get("max_near") else ""
-        lines.append(f"Max reflectivity: {current['max_dbz']} dBZ{near}")
-    lines.append(f"Corridor coverage (>= {RAIN_DBZ} dBZ, any rain): {current['rain_coverage_pct']}%")
+        lines.append(f"📊 Max reflectivity: {current['max_dbz']} dBZ{near}")
+    lines.append(f"☂️ Corridor coverage (any rain showing on radar): {current['rain_coverage_pct']}%")
     if current.get("approaching_stations"):
         lines.append("")
-        lines.append("Radar sees it before these stations have reported it:")
+        lines.append("🎯 Radar sees it before these stations have reported it:")
         for station, name, dist_mi in current["approaching_stations"]:
             lines.append(f"- {name} ({station}) -- {dist_mi} mi away")
-    lines.append(f"Radars used: {', '.join(current['sites_used'])}")
+    lines.append(f"📡 Radars used: {', '.join(current['sites_used'])}")
     return "\n".join(lines)
 
 
