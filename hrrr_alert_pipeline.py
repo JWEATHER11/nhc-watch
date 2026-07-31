@@ -281,37 +281,38 @@ def build_hrrr_alert_message(current, reasons):
         except ValueError:
             pass
     lines = [
-        "<b>⛈️ HRRR Update</b> -- Beaumont time",
-        now_local.strftime("%A, %b %-d %I:%M %p").replace(" 0", " "),
-        f"HRRR {run_str}",
+        "⛈️ <b>HRRR Update</b>",
+        f"📅 {now_local.strftime('%A, %b %-d · %I:%M %p').replace(' 0', ' ')} (Beaumont time)",
+        f"🛰️ HRRR {run_str}",
         "",
     ]
     for r in reasons:
-        lines.append(f"- {r}")
-    lines.append("")
+        lines.append(f"🔔 {r}")
+    if reasons:
+        lines.append("")
     # This tracks whether heavy rain is spread across a large area or
     # just one or two spots -- separate from whether ANY storm is
-    # happening (that's the Rainfall/Winds lines below). Kept as plain
+    # happening (that's the Rain/Wind lines below). Kept as plain
     # as possible after two rounds of this still reading as jargon: no
     # inch thresholds, no "corridor," no percentage math to decode.
     cov = current.get("coverage_pct") or 0
     if cov == 0:
-        lines.append("Any storms today look isolated, not a widespread heavy-rain event.")
+        lines.append("📊 Storms today look isolated, not widespread.")
     elif cov < 40:
-        lines.append("Heavy rain looks possible in a few spots, not widespread.")
+        lines.append("📊 Heavy rain possible in a few spots, not widespread.")
     else:
-        lines.append("Heavy rain looks widespread, not just isolated spots.")
+        lines.append("📊 Heavy rain looks widespread, not just isolated spots.")
     if current.get("max_total_in"):
         near = f" near {current.get('max_near')}" if current.get("max_near") else ""
         day = _rain_day_label(current.get("max_day_label"), now_local)
-        when = f" {day}" if day else ""
-        lines.append(f"Rainfall: up to {current['max_total_in']}\" possible{near}{when}")
+        when = f" -- {day}" if day else ""
+        lines.append(f"💧 Rain: up to {current['max_total_in']}\"{near}{when}")
     if current.get("onset_hour_str"):
-        lines.append(f"Timing: rain looks to move in around {_format_onset(current['onset_hour_str'])}")
+        lines.append(f"⏱️ Rain moving in: around {_format_onset(current['onset_hour_str'])}")
     if current.get("max_gust_mph"):
         near = f" near {current.get('max_gust_near')}" if current.get("max_gust_near") else ""
-        when = f" {_format_onset(current['max_gust_hour_str'])}" if current.get("max_gust_hour_str") else ""
-        lines.append(f"Winds: gusts up to {current['max_gust_mph']} mph possible{near}{when}")
+        when = f" -- {_format_onset(current['max_gust_hour_str'])}" if current.get("max_gust_hour_str") else ""
+        lines.append(f"💨 Wind: gusts up to {current['max_gust_mph']} mph{near}{when}")
     return "\n".join(lines)
 
 
