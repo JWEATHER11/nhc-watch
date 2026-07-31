@@ -35,17 +35,35 @@ STATE_FILE = Path(__file__).parent / "metar_storm_state.json"
 MAX_ATTEMPTS = 2
 RETRY_DELAY_SEC = 2
 
-# Beaumont/Port Arthur, Houston (Intercontinental + Hobby), Galveston,
-# Lake Charles, Lafayette, Lufkin (covers toward Jasper) -- same
-# corridor the rest of this system already watches.
+# Expanded from the original 7 to real, verified IEM ASOS/AWOS
+# stations across the SETX/SWLA corridor -- per instruction to add
+# more station coverage for catching rain starting, heavy totals, and
+# wind gusts. JAS (Jasper) closes a real gap: HRRR flagged a wind gust
+# near Jasper earlier with no station there to confirm it on the
+# ground. Verified each of these actually reports live via IEM before
+# adding (mesonet.agron.iastate.edu/geojson/network/TX_ASOS.geojson
+# and LA_ASOS.geojson), not guessed from memory.
 CORRIDOR_STATIONS = {
     "BPT": "Beaumont/Port Arthur",
+    "BMT": "Beaumont Municipal",
     "IAH": "Houston Intercontinental",
     "HOU": "Houston Hobby",
+    "DWH": "Houston/D.W. Hooks (north Houston)",
+    "EFD": "Houston/Ellington (south Houston)",
+    "SGR": "Sugar Land",
+    "CXO": "Conroe/Montgomery County",
+    "LVJ": "Pearland",
     "GLS": "Galveston",
     "LCH": "Lake Charles",
+    "CWF": "Lake Charles/Chennault",
     "LFT": "Lafayette",
     "LFK": "Lufkin",
+    "JAS": "Jasper",
+    "ORG": "Orange",
+    "DRI": "De Ridder",
+    "3R7": "Jennings",
+    "UTS": "Huntsville",
+    "T78": "Liberty",
 }
 
 GUST_THRESHOLD_KT = 40  # ~46 mph -- a real, useful heads-up level, below the official 50kt severe criterion
