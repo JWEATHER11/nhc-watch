@@ -274,19 +274,18 @@ def build_hrrr_alert_message(current, reasons):
     for r in reasons:
         lines.append(f"- {r}")
     lines.append("")
-    # This specifically measures how WIDESPREAD heavy rain is (>=2.5"
-    # total over 2 days, at how much of the corridor) -- a real storm
-    # producing strong gusts and under an inch of rain is genuinely
-    # isolated, not widespread, so this legitimately reads 0% right next
-    # to a real gust/rain alert. Written as a plain sentence instead of a
-    # bare percentage so that's clear without needing a footnote to
-    # decode it, and the 0% case is worded differently since "0% of the
-    # corridor" on its own kept reading as "nothing is happening."
+    # This tracks whether heavy rain is spread across a large area or
+    # just one or two spots -- separate from whether ANY storm is
+    # happening (that's the Rainfall/Winds lines below). Kept as plain
+    # as possible after two rounds of this still reading as jargon: no
+    # inch thresholds, no "corridor," no percentage math to decode.
     cov = current.get("coverage_pct") or 0
     if cov == 0:
-        lines.append("Widespread heavy rain (2.5\"+ almost everywhere): not expected -- any storms are more isolated (see Rainfall/Winds below)")
+        lines.append("Any storms today look isolated, not a widespread heavy-rain event.")
+    elif cov < 40:
+        lines.append("Heavy rain looks possible in a few spots, not widespread.")
     else:
-        lines.append(f"Widespread heavy rain (2.5\"+ total): {cov}% of the corridor could see this much")
+        lines.append("Heavy rain looks widespread, not just isolated spots.")
     if current.get("max_total_in"):
         near = f" near {current.get('max_near')}" if current.get("max_near") else ""
         lines.append(f"Rainfall: up to {current['max_total_in']}\" possible{near}")
