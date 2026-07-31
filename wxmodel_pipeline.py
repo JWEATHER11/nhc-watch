@@ -405,6 +405,32 @@ def fetch_point_pressure(lat, lon, forecast_hour, model_param):
     return None
 
 
+def fetch_point_pressure_ensemble_mean(lat, lon, forecast_hour, model_param):
+    """Same idea as fetch_point_pressure, but for ensemble-only models
+    (Google AI's WeatherNext) that don't exist on the regular
+    deterministic /v1/forecast endpoint -- confirmed live the
+    ensemble-api's plain (non-member-suffixed) pressure_msl field IS
+    the ensemble mean (matches an independently computed average of
+    all member columns), so no manual member-averaging needed."""
+    cache_buster = int(time.time())
+    url = (
+        f"https://ensemble-api.open-meteo.com/v1/ensemble"
+        f"?latitude={lat}&longitude={lon}&hourly=pressure_msl"
+        f"&models={model_param}&forecast_days=15&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, f"PointPressureEnsemble:{model_param}")
+    if not data:
+        return None
+    try:
+        parsed = json.loads(data.decode("utf-8"))
+        vals = parsed.get("hourly", {}).get("pressure_msl", [])
+        if forecast_hour < len(vals) and vals[forecast_hour] is not None:
+            return round(vals[forecast_hour], 1)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        pass
+    return None
+
+
 def fetch_model_grid(model_endpoint, forecast_hours=SHORT_MEDIUM_LONG_HOURS, models_param=None, label=None, forecast_days=15):
     """Queries an Open-Meteo forecast endpoint (GFS, ECMWF, or ECMWF
     with a specific models= override like AIFS) for pressure_msl and
@@ -596,6 +622,37 @@ def fetch_basin_grid(model_param):
         f"&models={model_param}&forecast_days=15&_cb={cache_buster}"
     )
     data = _fetch_with_retries_bytes(url, f"BasinGrid:{model_param}")
+    if not data:
+        return None
+    try:
+        parsed = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(parsed, list) or len(parsed) != len(points):
+        return None
+    return parsed
+
+
+def fetch_basin_grid_ensemble(model_param):
+    """Same idea as fetch_basin_grid, but for Google AI's WeatherNext,
+    which only exists via the ensemble-api. An earlier test of the
+    full 70-point basin grid at this density via the ensemble endpoint
+    was clocked at 59s/11.7MB and ruled out as too slow for a routine
+    check -- re-tested live and it came back in ~5s for the same
+    12MB payload, so it's back in play. Kept as its own function
+    (rather than folding into fetch_basin_grid) since a slow/failed
+    fetch here must never block the GFS/ECMWF/ICON scan it runs
+    alongside -- Google AI is additive, not a dependency."""
+    points = _basin_grid_points()
+    lat_str = ",".join(str(p[0]) for p in points)
+    lon_str = ",".join(str(p[1]) for p in points)
+    cache_buster = int(time.time())
+    url = (
+        f"https://ensemble-api.open-meteo.com/v1/ensemble"
+        f"?latitude={lat_str}&longitude={lon_str}&hourly=pressure_msl"
+        f"&models={model_param}&forecast_days=15&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, f"BasinGridEnsemble:{model_param}")
     if not data:
         return None
     try:
@@ -803,9 +860,13 @@ _basin_scan_cache = []
 
 def get_basin_candidates():
     """Runs the shared dense-grid local-minimum scan across GFS, ECMWF,
-    and ICON once per process and caches it -- each of the three
-    ensemble model callers below (google_ai/gefs/ecmwf_ens) reuses the
-    same candidates instead of re-scanning the whole basin three times.
+    ICON, and Google AI once per process and caches it -- each of the
+    three ensemble model callers below (google_ai/gefs/ecmwf_ens)
+    reuses the same candidates instead of re-scanning the whole basin
+    three times. Google AI gets a real independent scan of its own
+    here (not just an agreement check against what the others found),
+    per instruction to lean on it -- it's a genuinely capable model
+    and could catch something the other three miss entirely.
     Environmental corroboration (vorticity/shear/moisture/SST) is also
     computed here, once per candidate, for the same reason."""
     global _basin_scan_cache
@@ -816,6 +877,12 @@ def get_basin_candidates():
     for label, model_param in BASIN_SCAN_MODELS.items():
         grid = fetch_basin_grid(model_param)
         all_findings[label] = find_local_minima(grid) if grid else []
+    try:
+        google_grid = fetch_basin_grid_ensemble("google_weathernext2_ensemble")
+        all_findings["Google AI"] = find_local_minima(google_grid) if google_grid else []
+    except Exception as e:
+        print(f"[Basin scan] Google AI grid unavailable (non-fatal): {e}")
+        all_findings["Google AI"] = []
 
     clusters = _cluster_candidates(all_findings)
     for c in clusters:
@@ -855,13 +922,23 @@ def _update_genesis_trend(ensemble_signals, state):
                 current_regions.add(f["region"])
 
     history = state.get("genesis_trend_history", [])
-    notes = []
+    persistent, repeating = [], []
     for region in sorted(current_regions):
         appearances = sum(1 for past in history if region in past)
         if appearances >= 2:
-            notes.append(f"{region}: showing up in {appearances + 1} of the last {len(history) + 1} runs -- persistent, may be trying to develop")
+            persistent.append(region)
         elif appearances == 1:
-            notes.append(f"{region}: showing again after last run -- worth watching if this keeps building")
+            repeating.append(region)
+
+    # Condensed to at most one line per instruction -- one line per
+    # region got noisy/repetitive, and with only a handful of basin
+    # regions in play a given spot tends to look "persistent" almost
+    # every cycle regardless of whether that's actually notable.
+    notes = []
+    if persistent:
+        notes.append(f"Persistent across recent runs: {', '.join(persistent)}")
+    if repeating:
+        notes.append(f"Newly repeating: {', '.join(repeating)}")
 
     history = [sorted(current_regions)] + history[:GENESIS_TREND_HISTORY_LEN - 1]
     state["genesis_trend_history"] = history
@@ -1120,7 +1197,7 @@ def fetch_nhc_outlook_summary():
     return "; ".join(mentions[:6])
 
 
-def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None, line_signal=None, temp_gradient=None, ndfd_changed=True, genesis_trend_notes=None):
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None, line_signal=None, temp_gradient=None, ndfd_changed=True, genesis_trend_notes=None):
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M %p").replace(" 0", " ")
@@ -1217,18 +1294,17 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     lines.extend(summary_lines)
     lines.append("")
 
-    lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
-    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow))
     try:
         conditions_detail = _sx2.fetch_conditions_detail()
-        temp_blend = _sx2.fetch_temperature_blend()
-        conditions_lines = _sx2.build_conditions_section(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan, temp_blend)
-        if conditions_lines:
-            lines.extend(conditions_lines)
+        conditions_extra = _sx2.build_conditions_extra(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
     except Exception as e:
         print(f"[Combined cycle] Conditions detail unavailable (non-fatal): {e}")
+        conditions_extra = None
+
+    lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
+    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow, conditions_extra))
     try:
-        seven_day_lines = _sx2.build_seven_day_section(seven_day)
+        seven_day_lines = _sx2.build_seven_day_section(seven_day, ndfd_summary, ndfd_changed)
         if seven_day_lines:
             lines.extend(seven_day_lines)
     except Exception as e:
@@ -1254,44 +1330,34 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
             if r.get("wpc_note"):
                 lines.append(f"  {r['wpc_note']}")
 
+    # Consolidated per instruction -- MAIN MODELS and SIDE NOTES used
+    # to split the same story across two headers (GFS/Euro/ICON in one,
+    # AIFS/ensemble/NHC/trend in the other) for no real reason once
+    # every model here checks the exact same flagged location. One
+    # section, every model in one place, AIFS and Google AI included
+    # (Google AI needs the ensemble-api specifically -- it isn't on
+    # the regular deterministic endpoint the other models use).
     lines.append("")
     lines.append("<b>\U0001F300 MAIN MODELS</b>")
     if ensemble_hits:
-        # Check GFS/Euro/ICON at the EXACT spot the ensemble scan flagged
-        # below, instead of each model's own single lowest point anywhere
-        # in a huge 15-day domain (an older approach that routinely
-        # pointed at a totally different place, like the Gulf of Mexico
-        # or open Atlantic -- real, but not the same location SIDE NOTES
-        # was talking about, which just read as contradictory).
         top_model_name, top, _ = min(ensemble_hits, key=lambda mt: mt[1]["anomaly"])
         for label, model_param in (("GFS", "gfs_seamless"), ("Euro", "ecmwf_ifs025"), ("ICON", "icon_seamless")):
             val = fetch_point_pressure(top["lat"], top["lon"], top["fh"], model_param)
             if val is not None:
-                lines.append(f"🌀 {label}: {val} mb near {top['region']} (same spot as SIDE NOTES, around {_fh_to_date_label(top['fh'])})")
+                lines.append(f"🌀 {label}: {val} mb near {top['region']} (around {_fh_to_date_label(top['fh'])})")
             else:
                 lines.append(f"🌀 {label}: data unavailable this cycle")
-    else:
-        lines.append("🌀 No flagged location this cycle -- nothing specific for GFS/Euro/ICON to check against.")
+        aifs_val = fetch_point_pressure(top["lat"], top["lon"], top["fh"], "ecmwf_aifs025_single")
+        if aifs_val is not None:
+            lines.append(f"🤖 AIFS (AI): {aifs_val} mb near {top['region']} (around {_fh_to_date_label(top['fh'])})")
+        else:
+            lines.append("🤖 AIFS (AI): data unavailable this cycle")
+        google_val = fetch_point_pressure_ensemble_mean(top["lat"], top["lon"], top["fh"], "google_weathernext2_ensemble")
+        if google_val is not None:
+            lines.append(f"🤖 Google AI: {google_val} mb near {top['region']} (around {_fh_to_date_label(top['fh'])})")
+        else:
+            lines.append("🤖 Google AI: data unavailable this cycle")
 
-    lines.append("")
-    lines.append("<b>\U0001F4CA SIDE NOTES</b>")
-    if aifs_scan and aifs_scan.get("results"):
-        best = min(aifs_scan["results"], key=lambda r: r["mslp_mb"])
-        region = classify_region(best["lat"], best["lon"])
-        wind_str = f", {best['wind_mph']} mph" if best.get("wind_mph") is not None else ""
-        lines.append(f"🤖 ECMWF AIFS (AI): {best['mslp_mb']} mb near {region} (around {_fh_to_date_label(best['fh'])}{wind_str})")
-    else:
-        lines.append("🤖 ECMWF AIFS (AI): data unavailable this cycle")
-    # ensemble_hits was already computed at the top of this function (so
-    # the executive summary and this section always agree on the same
-    # result, never a separately-recomputed second answer). All three
-    # ensemble models check the same shared candidate list (see
-    # get_basin_candidates), so when they land on the same tier a
-    # per-model loop would produce three word-for-word identical lines
-    # in a row -- one combined line instead, with each model's own
-    # agreement % kept but compact.
-    if ensemble_hits:
-        best_model_name, top, _ = min(ensemble_hits, key=lambda mt: mt[1]["anomaly"])
         date_label = _fh_to_date_label(top["fh"])
         spin = ", real spin" if (top.get("vorticity") or 0) >= VORTICITY_NOTABLE_THRESHOLD else ""
         agreeing = top.get("models_agreeing") or []
@@ -1303,19 +1369,13 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         if max_extra > 1:
             lines.append(f"  ({max_extra - 1} other spot{'s' if max_extra > 2 else ''} also flagged -- worth a look at the raw data)")
     else:
+        lines.append("🌀 No flagged location this cycle -- nothing specific for GFS/Euro/ICON/AIFS/Google AI to check against.")
         lines.append("🎲 Ensemble check (Google AI/GEFS/ECMWF): no signs of tropical development")
     nhc_line = nhc_summary or "unavailable this cycle"
     lines.append(f"🏛️ NHC: {nhc_line}")
     if genesis_trend_notes:
         for note in genesis_trend_notes:
             lines.append(f"📈 {note}")
-
-    if ndfd_summary:
-        lines.append("")
-        if ndfd_changed:
-            lines.append("<b>\U0001F4CB NWS comparison</b> (brief): " + "; ".join(ndfd_summary))
-        else:
-            lines.append("<b>\U0001F4CB NWS comparison</b>: No significant change from NWS Houston / Lake Charles.")
 
     lines.append("")
     lines.append("Expect updates roughly: 00Z ~2AM, 06Z ~8AM, 12Z ~2PM, 18Z ~8PM (Beaumont time)")
@@ -1503,7 +1563,6 @@ def process_combined_cycle(state):
         return
     gfs_scan = fetch_model_grid("gfs", forecast_days=16)
     ecmwf_scan = fetch_model_grid("ecmwf", forecast_days=15)
-    aifs_scan = fetch_model_grid("ecmwf", models_param="ecmwf_aifs025_single", label="OpenMeteo:AIFS", forecast_days=15)
     ensemble_signals = {}
     for model_key in ENSEMBLE_MODELS:
         ensemble_signals[model_key] = fetch_ensemble_genesis_signal(model_key)
@@ -1536,7 +1595,7 @@ def process_combined_cycle(state):
         ndfd_summary = None
 
     cycle_hour_utc = int(cycle_key.split("T")[1])
-    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed, genesis_trend_notes)
+    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed, genesis_trend_notes)
     try:
         deliver(message)
     except Exception as e:

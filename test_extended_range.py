@@ -39,7 +39,7 @@ nhc_summary = w.fetch_nhc_outlook_summary()
 print("NHC:", nhc_summary, f"({_time.time()-start:.1f}s elapsed)")
 
 cycle_hour_utc = int(w.current_cycle_key().split("T")[1])
-message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan, ensemble_signals, nhc_summary)
+message = w.build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary)
 print()
 print("=== FULL MESSAGE ===")
 print(message)

@@ -453,7 +453,7 @@ def fetch_setx_swla_wpc_corroboration():
     return None
 
 
-def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None):
+def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None, conditions_extra=None):
     if not outlook:
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
@@ -478,7 +478,10 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
 
         def day_line(label, day, rain_in, wind):
             bits = [f"High {day['high']}F / Low {day['low']}F", f"{day['rain_pct']}% rain chance"]
-            if rain_in is not None:
+            # A specific "near X" spot only makes sense when there's an
+            # actual meaningful amount -- "up to 0.0" near Jasper" reads
+            # like a real signal when there isn't one, per instruction.
+            if rain_in is not None and rain_in >= 0.1:
                 bits.append(f"up to {rain_in}\" possible{rain_near}")
             if wind:
                 gust_bit = f"gusts avg {wind['avg_gust_mph']} mph"
@@ -490,9 +493,12 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
             return f"- {label}: " + ", ".join(bits)
 
         lines.append(day_line("Today", d0, today_rain_in, today_wind))
+        lines.append("")
         lines.append(day_line("Tomorrow", d1, tomorrow_rain_in, tomorrow_wind))
     else:
         lines.append("- Data unavailable this cycle.")
+    if conditions_extra:
+        lines.extend(conditions_extra)
     if ndfd_today_tomorrow:
         nws_parts = [f"{office} {total}\"" for office, total in ndfd_today_tomorrow.items()]
         lines.append("- NWS: " + ", ".join(nws_parts))
@@ -999,6 +1005,27 @@ TEMP_BLEND_EXTRA_POINTS = {
 }
 
 
+def _nws_heat_index_f(temp_f, rh_pct):
+    """NWS's own Rothfusz regression, not a generic model 'feels like'
+    -- per instruction, the apparent_temperature field was reading
+    several degrees cooler than real observed heat index on hot,
+    humid Gulf Coast days (apparent_temperature blends in a wind-
+    cooling term that the NWS heat index does not use)."""
+    if temp_f < 80:
+        return 0.5 * (temp_f + 61.0 + (temp_f - 68.0) * 1.2 + rh_pct * 0.094)
+    T, RH = temp_f, rh_pct
+    hi = (
+        -42.379 + 2.04901523 * T + 10.14333127 * RH - 0.22475541 * T * RH
+        - 0.00683783 * T * T - 0.05481717 * RH * RH + 0.00122874 * T * T * RH
+        + 0.00085282 * T * RH * RH - 0.00000199 * T * T * RH * RH
+    )
+    if RH < 13 and 80 <= T <= 112:
+        hi -= ((13 - RH) / 4) * ((17 - abs(T - 95)) / 17) ** 0.5
+    elif RH > 85 and 80 <= T <= 87:
+        hi += ((RH - 85) / 10) * ((87 - T) / 5)
+    return hi
+
+
 def fetch_conditions_detail():
     """Highs/lows, heat index, dewpoint trend, wind, rain timing, and a
     simple pattern one-liner -- from Euro, for the local area. Highs/
@@ -1011,7 +1038,7 @@ def fetch_conditions_detail():
     url = (
         f"https://api.open-meteo.com/v1/ecmwf"
         f"?latitude={lat_str}&longitude={lon_str}"
-        f"&hourly=temperature_2m,apparent_temperature,dewpoint_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation"
+        f"&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,dewpoint_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation"
         f"&daily=temperature_2m_max,temperature_2m_min"
         f"&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&_cb={cache_buster}"
     )
@@ -1056,13 +1083,40 @@ def fetch_conditions_detail():
                 diff_notes.append(f"{city} looks {abs(round(diff))}F {warmer_cooler}")
 
     hourly = bpt.get("hourly", {})
-    apparent = [v for v in hourly.get("apparent_temperature", [])[:24] if v is not None]
-    actual_temp = [v for v in hourly.get("temperature_2m", [])[:24] if v is not None]
+    actual_temp = hourly.get("temperature_2m", [])[:24]
+    rh = hourly.get("relative_humidity_2m", [])[:24]
     max_heat_index = None
-    if apparent and actual_temp:
-        peak_idx = actual_temp.index(max(actual_temp))
-        if peak_idx < len(apparent) and apparent[peak_idx] - actual_temp[peak_idx] >= 5:
-            max_heat_index = round(apparent[peak_idx])
+    # Real NWS Heat Index (Rothfusz regression) computed per-hour from
+    # temp + humidity, not Open-Meteo's generic apparent_temperature --
+    # per instruction, apparent_temperature was reading noticeably
+    # cooler than real observed heat index on hot, humid days (it
+    # blends in a wind-cooling term the NWS heat index formula doesn't
+    # use, so calm humid afternoons read too low).
+    heat_indices = [
+        _nws_heat_index_f(t, h) for t, h in zip(actual_temp, rh) if t is not None and h is not None
+    ]
+    if heat_indices:
+        peak_hi = max(heat_indices)
+        peak_actual = max(v for v in actual_temp if v is not None)
+        if peak_hi - peak_actual >= 5:
+            max_heat_index = round(peak_hi)
+
+    # Real METAR ground truth as a floor, per instruction -- a coarse
+    # forecast grid can genuinely miss local peak heat/humidity that
+    # actual corridor stations are reporting right now (confirmed live:
+    # forecast topped out ~101 while real stations were already at
+    # 105-110). Never lets the reported number be LOWER than what's
+    # actually been observed today.
+    try:
+        import metar_storm_pipeline as _metar
+        obs = _metar.fetch_corridor_conditions()
+        observed_feels = [ob["feel"] for ob in (obs or []) if ob.get("feel") is not None]
+        if observed_feels:
+            max_observed_feel = round(max(observed_feels))
+            if max_heat_index is None or max_observed_feel > max_heat_index:
+                max_heat_index = max_observed_feel
+    except Exception as e:
+        print(f"[Conditions] METAR heat-index cross-check unavailable (non-fatal): {e}")
 
     dp = [v for v in hourly.get("dewpoint_2m", []) if v is not None]
     dewpoint_trend = "steady"
@@ -1155,36 +1209,29 @@ def build_pattern_oneliner(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan
     return None
 
 
-def build_conditions_section(details, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan, temp_blend=None):
+def build_conditions_extra(details, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan):
+    """Per instruction: the old standalone "Temperature / Wind / Other"
+    section repeated the high/low, wind gusts, and rain% that the
+    Today & Tomorrow block already shows -- folded into that block
+    instead, keeping only what's NOT already said there: heat index,
+    a notable dewpoint trend, rain timing (if there's a real chance),
+    and the pattern one-liner. Returns plain lines (no header), meant
+    to be appended inside build_setx_swla_section's Today & Tomorrow
+    block."""
     if not details:
         return []
-    lines = ["", "<b>\U0001F321️ Temperature / Wind / Other</b>"]
-    if temp_blend and temp_blend.get("high_f") is not None:
-        lines.append(f"- High {temp_blend['high_f']}F, low {temp_blend['low_f']}F (Houston-Beaumont-Lumberton-Silsbee blend)")
-    elif details["today_high_f"] is not None or details["today_low_f"] is not None:
-        hi = f"{details['today_high_f']}F" if details["today_high_f"] is not None else "n/a"
-        lo = f"{details['today_low_f']}F" if details["today_low_f"] is not None else "n/a"
-        extra = f" ({'; '.join(details['diff_notes'])})" if details["diff_notes"] else ""
-        lines.append(f"- Houston/Beaumont area blend: high {hi}, low {lo}{extra}")
+    lines = []
     if details["heat_index_f"] is not None:
         lines.append(f"- Heat index up to {details['heat_index_f']}F today")
     if details["dewpoint_trend"] != "steady":
         lines.append(f"- Dewpoints {details['dewpoint_trend']}")
-    if details["wind_note"]:
-        lines.append(f"- Wind: {details['wind_note']}")
     cov = setx_swla_outlook.get("coverage_pct") if setx_swla_outlook else None
     # Rain timing only shown when there's an actual meaningful chance
     # of rain, per instruction -- previously this came from a single
     # point's raw hourly trace, which could show "mainly overnight"
-    # from a trace amount even when coverage was genuinely ~0%,
-    # directly contradicting the "Chance of measurable rain" line
-    # right below it.
+    # from a trace amount even when coverage was genuinely ~0%.
     if details["rain_timing"] and cov is not None and cov >= 10:
         lines.append(f"- Rain timing: {details['rain_timing']}")
-    if cov is not None:
-        lines.append(f"- Chance of measurable rain: ~{cov}%")
-        if setx_swla_outlook.get("heavy_potential"):
-            lines.append("- Chance of 1\"+ in spots: elevated given current signal")
     pattern = build_pattern_oneliner(setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
     if pattern:
         lines.append(f"- Pattern: {pattern}")
@@ -1910,7 +1957,7 @@ def fetch_seven_day_forecast(ndfd_totals=None):
     return days
 
 
-def build_seven_day_section(days):
+def build_seven_day_section(days, ndfd_summary=None, ndfd_changed=True):
     if not days or not any(days):
         return None
     lines = ["", "<b>\U0001F4C5 7-Day Forecast</b>"]
@@ -1929,4 +1976,16 @@ def build_seven_day_section(days):
         cov = _coverage_word(d["rain_pct"]) or "mostly dry"
         cov_str = f" ({cov})" if d["rain_pct"] >= 10 else ""
         lines.append(f"{day_labels[i]}: High {d['high']} / Low {d['low']} / Rain {d['rain_pct']}%{cov_str}")
+
+    # NWS comparison, per instruction: belongs with the 7-day temps/
+    # rain it's actually comparing against, not off on its own earlier
+    # in the message.
+    if ndfd_summary:
+        lines.append("")
+        lines.append("<b>\U0001F4CB NWS Comparison</b>")
+        if ndfd_changed:
+            for item in ndfd_summary:
+                lines.append(f"- {item}")
+        else:
+            lines.append("- No significant change from NWS Houston / Lake Charles.")
     return lines
