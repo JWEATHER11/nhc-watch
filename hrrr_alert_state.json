@@ -1,11 +1,11 @@
 {
   "last_alerted": {
     "coverage_pct": 0,
-    "max_total_in": 0.2,
+    "max_total_in": 0.9,
     "max_near": "Houston",
     "onset_hour_idx": null,
     "onset_hour_str": null,
-    "max_gust_mph": 29.3,
+    "max_gust_mph": 53.0,
     "max_gust_near": "Houston"
   }
 }
