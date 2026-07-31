@@ -453,7 +453,7 @@ def _href_summary_line(href_data, now_local):
     if best is None or best[2] < HREF_NOTABLE_THRESHOLD_PCT:
         return None
     label, city, pct = best
-    return f"🎲 Second opinion (separate high-res model): {pct}% chance {city} sees 0.5\"+ rain {label}"
+    return f"⛈️ HREF: {pct}% chance {city} sees 0.5\"+ rain {label}"
 
 
 def process_hrrr_alert(state):
