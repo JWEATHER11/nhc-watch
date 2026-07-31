@@ -1178,13 +1178,13 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     if ensemble_hits:
         top_model_name, top, _ = min(ensemble_hits, key=lambda mt: mt[1]["anomaly"])
         summary_lines.append(
-            f"- Tropical: {tier_label(top['pct'])} of development near {top['region']}, "
+            f"🌀 Tropical: {tier_label(top['pct'])} of development near {top['region']}, "
             f"around {_fh_to_date_label(top['fh'])} -- worth watching (see SIDE NOTES below)"
         )
     elif nhc_summary and "percent" in nhc_summary:
-        summary_lines.append(f"- Tropical: NHC noting formation chances -- {nhc_summary}")
+        summary_lines.append(f"🌀 Tropical: NHC noting formation chances -- {nhc_summary}")
     else:
-        summary_lines.append("- Tropical: quiet, no significant signals this cycle")
+        summary_lines.append("🌀 Tropical: quiet, no significant signals this cycle")
 
     rain_bits = []
     if hrrr_detail and hrrr_detail.get("max_total_in") and hrrr_detail["max_total_in"] >= 0.5:
@@ -1193,17 +1193,17 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     if setx_swla_outlook and setx_swla_outlook.get("medium_euro_in") is not None:
         rain_bits.append(f"~{setx_swla_outlook['medium_euro_in']}\" days 3-5 (Euro avg)")
     if rain_bits:
-        summary_lines.append(f"- Rainfall (SETX/SWLA): {', '.join(rain_bits)}")
+        summary_lines.append(f"💧 Rainfall (SETX/SWLA): {', '.join(rain_bits)}")
     else:
-        summary_lines.append("- Rainfall (SETX/SWLA): mostly dry, nothing significant expected")
+        summary_lines.append("💧 Rainfall (SETX/SWLA): mostly dry, nothing significant expected")
 
     front_when = f" ({front_signal['dewpoint_drop_time']})" if front_signal and front_signal.get("dewpoint_drop_time") else ""
     if front_signal and front_signal.get("front_signal"):
-        summary_lines.append(f"- Front: signs of a real front moving through{front_when}")
+        summary_lines.append(f"🌬️ Front: signs of a real front moving through{front_when}")
     elif afd_front_mentions:
-        summary_lines.append(f"- Front: NWS mentions one{front_when}, models not fully agreeing yet -- see FRONT WATCH below")
+        summary_lines.append(f"🌬️ Front: NWS mentions one{front_when}, models not fully agreeing yet -- see FRONT WATCH below")
     else:
-        summary_lines.append("- Front: none indicated this cycle")
+        summary_lines.append("🌬️ Front: none indicated this cycle")
 
     lines.extend(summary_lines)
     lines.append("")
@@ -1241,7 +1241,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         lines.append("")
         lines.append("<b>\U0001F30A GULF COAST RAINFALL WATCH</b> (next 10 days)")
         for model_name, r in rainfall_flags.items():
-            lines.append(f"- {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
+            lines.append(f"💧 {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
             if r.get("wpc_note"):
                 lines.append(f"  {r['wpc_note']}")
 
@@ -1258,11 +1258,11 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         for label, model_param in (("GFS", "gfs_seamless"), ("Euro", "ecmwf_ifs025"), ("ICON", "icon_seamless")):
             val = fetch_point_pressure(top["lat"], top["lon"], top["fh"], model_param)
             if val is not None:
-                lines.append(f"- {label}: {val} mb near {top['region']} (same spot as SIDE NOTES, around {_fh_to_date_label(top['fh'])})")
+                lines.append(f"🌀 {label}: {val} mb near {top['region']} (same spot as SIDE NOTES, around {_fh_to_date_label(top['fh'])})")
             else:
-                lines.append(f"- {label}: data unavailable this cycle")
+                lines.append(f"🌀 {label}: data unavailable this cycle")
     else:
-        lines.append("- No flagged location this cycle -- nothing specific for GFS/Euro/ICON to check against.")
+        lines.append("🌀 No flagged location this cycle -- nothing specific for GFS/Euro/ICON to check against.")
 
     lines.append("")
     lines.append("<b>\U0001F4CA SIDE NOTES</b>")
@@ -1270,9 +1270,9 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         best = min(aifs_scan["results"], key=lambda r: r["mslp_mb"])
         region = classify_region(best["lat"], best["lon"])
         wind_str = f", {best['wind_mph']} mph" if best.get("wind_mph") is not None else ""
-        lines.append(f"- ECMWF AIFS (AI): {best['mslp_mb']} mb near {region} (around {_fh_to_date_label(best['fh'])}{wind_str})")
+        lines.append(f"🤖 ECMWF AIFS (AI): {best['mslp_mb']} mb near {region} (around {_fh_to_date_label(best['fh'])}{wind_str})")
     else:
-        lines.append("- ECMWF AIFS (AI): data unavailable this cycle")
+        lines.append("🤖 ECMWF AIFS (AI): data unavailable this cycle")
     # ensemble_hits was already computed at the top of this function (so
     # the executive summary and this section always agree on the same
     # result, never a separately-recomputed second answer). All three
@@ -1287,19 +1287,19 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         spin = ", real spin" if (top.get("vorticity") or 0) >= VORTICITY_NOTABLE_THRESHOLD else ""
         agreeing = top.get("models_agreeing") or []
         agree_str = f" ({'+'.join(agreeing)} agree)" if len(agreeing) > 1 else ""
-        lines.append(f"- Ensemble check: {tier_label(top['pct'])} of tropical development near {top['region']}, around {date_label}{spin}{agree_str}")
+        lines.append(f"🎲 Ensemble check: {tier_label(top['pct'])} of tropical development near {top['region']}, around {date_label}{spin}{agree_str}")
         pct_str = ", ".join(f"{mn} {t['pct']}%" for mn, t, _ in ensemble_hits)
         lines.append(f"  ({pct_str})")
         max_extra = max(n for _, _, n in ensemble_hits)
         if max_extra > 1:
             lines.append(f"  ({max_extra - 1} other spot{'s' if max_extra > 2 else ''} also flagged -- worth a look at the raw data)")
     else:
-        lines.append("- Ensemble check (Google AI/GEFS/ECMWF): no signs of tropical development")
+        lines.append("🎲 Ensemble check (Google AI/GEFS/ECMWF): no signs of tropical development")
     nhc_line = nhc_summary or "unavailable this cycle"
-    lines.append(f"- NHC: {nhc_line}")
+    lines.append(f"🏛️ NHC: {nhc_line}")
     if genesis_trend_notes:
         for note in genesis_trend_notes:
-            lines.append(f"- {note}")
+            lines.append(f"📈 {note}")
 
     if ndfd_summary:
         lines.append("")

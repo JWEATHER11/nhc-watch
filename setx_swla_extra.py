@@ -392,7 +392,7 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
     # use HRRR on the large grid so a small storm can't fall entirely
     # between points, and this avoids a second, different-grid answer
     # for the same two days.
-    lines.append("<b>Today & Tomorrow</b>")
+    lines.append("<b>\U0001F4C6 Today & Tomorrow</b>")
     if seven_day and seven_day[0] and seven_day[1]:
         d0, d1 = seven_day[0], seven_day[1]
         avg_pct = round((d0["rain_pct"] + d1["rain_pct"]) / 2)
@@ -413,7 +413,7 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
     # Days 3-5: pulled from the same dense-grid 7-Day Forecast (day
     # indices 2-4), per instruction -- same reasoning as above, this
     # used to come from the old sparse 5-point grid.
-    lines.append("<b>Days 3-5</b>")
+    lines.append("<b>\U0001F5D3️ Days 3-5</b>")
     mid_days = [d for d in (seven_day[2:5] if seven_day and len(seven_day) >= 5 else []) if d]
     if mid_days:
         avg_pct = round(sum(d["rain_pct"] for d in mid_days) / len(mid_days))
@@ -432,7 +432,7 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
         lines.append("- NWS: " + ", ".join(nws_parts))
     lines.append("")
 
-    lines.append("<b>Day 5+</b>")
+    lines.append("<b>\U0001F52E Day 5+</b>")
     lines.append("- " + _long_range_pattern(outlook.get("long_coverage_pct")))
     if outlook.get("max_long_total_in") is not None:
         if outlook.get("sees_1in_plus"):
