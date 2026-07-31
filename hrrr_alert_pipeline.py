@@ -256,8 +256,13 @@ def build_hrrr_alert_message(current, reasons):
     run_str = "unknown"
     if current.get("run_cycle_str"):
         try:
-            run_dt = datetime.fromisoformat(current["run_cycle_str"]).astimezone(BEAUMONT_TZ)
-            run_str = run_dt.strftime("%I %p").lstrip("0") + " CDT run (est.)"
+            # Z time only, never converted to local -- per instruction,
+            # this needs to match the convention every other model graphic
+            # (WeatherBell, etc.) uses so the run can actually be found
+            # and cross-checked, not translated into something that has
+            # to be converted back.
+            run_dt_utc = datetime.fromisoformat(current["run_cycle_str"]).astimezone(timezone.utc)
+            run_str = f"{run_dt_utc.hour:02d}Z run (est.)"
         except ValueError:
             pass
     lines = [
