@@ -1401,6 +1401,7 @@ def fetch_hrrr_grid_detail():
 
     totals_in = []
     grid_totals = {}
+    grid_by_day = {}  # (row, col) -> [today_in, tomorrow_in], for day-attribution on the max point
     for idx, (point, (glat, glon)) in enumerate(zip(points, grid_points)):
         daily_mm = point.get("daily", {}).get("precipitation_sum", [])
         days = [v for v in daily_mm[:2] if v is not None]
@@ -1410,6 +1411,7 @@ def fetch_hrrr_grid_detail():
         totals_in.append(total_in)
         row, col = idx // HRRR_GRID_COLS, idx % HRRR_GRID_COLS
         grid_totals[(row, col)] = total_in
+        grid_by_day[(row, col)] = [(v / 25.4 if v is not None else 0.0) for v in daily_mm[:2]]
 
     if not totals_in:
         return None
@@ -1436,23 +1438,41 @@ def fetch_hrrr_grid_detail():
     hit_count = 0
     max_total = 0.0
     max_coords = None
+    max_row_col = None
     for (row, col), total_in in grid_totals.items():
         if total_in >= 2.5 and _has_neighbor_support(row, col, total_in):
             hit_count += 1
         if total_in > max_total and _has_neighbor_support(row, col, total_in):
             max_total = total_in
             max_coords = grid_points[row * HRRR_GRID_COLS + col]
+            max_row_col = (row, col)
 
     avg_total = round(sum(totals_in) / len(totals_in), 1)
     coverage_pct = round(100 * hit_count / len(totals_in))
     max_label = _nearest_city_label(*max_coords) if max_coords else None
     majority_under_in = _majority_threshold(totals_in)
 
+    # Which day the isolated max actually falls on -- "up to X" possible
+    # near Y" with no day attached reads as if it could mean either day,
+    # per instruction this needs to be explicit.
+    max_today_in, max_tomorrow_in, max_day_label = None, None, None
+    if max_row_col is not None:
+        by_day = grid_by_day.get(max_row_col, [0.0, 0.0])
+        max_today_in = round(by_day[0], 1) if len(by_day) > 0 else 0.0
+        max_tomorrow_in = round(by_day[1], 1) if len(by_day) > 1 else 0.0
+        if max_today_in >= max_tomorrow_in:
+            max_day_label = "today"
+        else:
+            max_day_label = "tomorrow"
+
     return {
         "avg_total_in": avg_total,
         "majority_under_in": majority_under_in,
         "max_total_in": round(max_total, 1),
         "max_near": max_label,
+        "max_today_in": max_today_in,
+        "max_tomorrow_in": max_tomorrow_in,
+        "max_day_label": max_day_label,
         "coverage_pct": coverage_pct,
         "coverage_word": _coverage_word(coverage_pct),
         "source_label": source_label,

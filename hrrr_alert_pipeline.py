@@ -171,6 +171,7 @@ def fetch_hrrr_alert_signal():
         "coverage_pct": detail["coverage_pct"],
         "max_total_in": detail["max_total_in"],
         "max_near": detail.get("max_near"),
+        "max_day_label": detail.get("max_day_label"),
         "onset_hour_idx": onset_hour_idx,
         "onset_hour_str": onset_hour_str,
         "max_gust_mph": round(max_gust, 1),
@@ -251,6 +252,20 @@ def _format_onset(iso_str):
     return f"{label} around {dt.strftime('%I %p').lstrip('0')}"
 
 
+def _rain_day_label(max_day_label, now_local):
+    """The rainfall max is a daily total (today+tomorrow summed), not an
+    hourly onset like the wind gust, so it needs its own day label built
+    from today's actual date rather than reusing _format_onset. Same
+    weekday-name-first convention as everywhere else -- 'today'/'tomorrow'
+    alone makes the reader do the date math themselves."""
+    if not max_day_label:
+        return None
+    if max_day_label == "tomorrow":
+        target = now_local.date() + timedelta(days=1)
+        return f"{target.strftime('%A')} (tomorrow)"
+    return f"{now_local.strftime('%A')} (today)"
+
+
 def build_hrrr_alert_message(current, reasons):
     now_local = datetime.now(BEAUMONT_TZ)
     run_str = "unknown"
@@ -288,7 +303,9 @@ def build_hrrr_alert_message(current, reasons):
         lines.append("Heavy rain looks widespread, not just isolated spots.")
     if current.get("max_total_in"):
         near = f" near {current.get('max_near')}" if current.get("max_near") else ""
-        lines.append(f"Rainfall: up to {current['max_total_in']}\" possible{near}")
+        day = _rain_day_label(current.get("max_day_label"), now_local)
+        when = f" {day}" if day else ""
+        lines.append(f"Rainfall: up to {current['max_total_in']}\" possible{near}{when}")
     if current.get("onset_hour_str"):
         lines.append(f"Timing: rain looks to move in around {_format_onset(current['onset_hour_str'])}")
     if current.get("max_gust_mph"):
