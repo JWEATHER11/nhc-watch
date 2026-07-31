@@ -449,7 +449,7 @@ def _href_summary_line(href_data, now_local):
             parts.append(f"{label} {best_pct}%")
     if not parts:
         return None
-    return "🎲 HREF backup: " + " · ".join(parts)
+    return "🎲 Other models agreeing on 0.5\"+ rain: " + " · ".join(parts)
 
 
 def process_hrrr_alert(state):
