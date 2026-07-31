@@ -1503,6 +1503,8 @@ def process_combined_cycle(state):
     rainfall_flags = fetch_gulf_coast_rainfall()
     import setx_swla_extra as _sx
     setx_swla_outlook = _sx.fetch_setx_swla_rainfall_outlook()
+    if setx_swla_outlook:
+        setx_swla_outlook["long_trend_label"] = _sx.compute_day5_trend_label(setx_swla_outlook.get("long_coverage_pct"), state)
     front_signal = _sx.fetch_front_signal()
     line_signal = _sx.fetch_organized_line_signal()
     temp_gradient = _sx.fetch_temperature_gradient()

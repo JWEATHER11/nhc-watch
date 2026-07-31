@@ -205,6 +205,30 @@ def _long_range_pattern(coverage_pct):
     return "Longer term continues to look mostly dry"
 
 
+DAY5_TREND_JUMP_PCT = 15
+
+
+def compute_day5_trend_label(coverage_pct, state):
+    """Per instruction: mainly just say whether the extended range is
+    getting more or less active cycle-to-cycle, not a static snapshot
+    -- compares this cycle's long-range coverage % against the last
+    cycle's (stored in state), same spirit as the tropical genesis
+    trend tracking elsewhere in this pipeline."""
+    if coverage_pct is None:
+        return "Longer-range signal unavailable this cycle"
+    prev_pct = state.get("day5_prev_coverage_pct")
+    state["day5_prev_coverage_pct"] = coverage_pct
+    base = _long_range_pattern(coverage_pct)
+    if prev_pct is None:
+        return base
+    diff = coverage_pct - prev_pct
+    if diff >= DAY5_TREND_JUMP_PCT:
+        return f"{base} -- picking up from last cycle"
+    if -diff >= DAY5_TREND_JUMP_PCT:
+        return f"{base} -- easing back from last cycle"
+    return f"{base} -- holding steady"
+
+
 # Rounds to the nearest 0.5" for comparison, per instruction -- tiny
 # fluctuations between cycles shouldn't count as a "meaningful change."
 NDFD_MEANINGFUL_CHANGE_IN = 0.5
@@ -432,21 +456,19 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
         lines.append("- NWS: " + ", ".join(nws_parts))
     lines.append("")
 
+    # Collapsed the old first two lines into one per instruction --
+    # mainly just getting more/less active and the total. Kept the
+    # heavy-rain-potential line always shown (YES or the reassuring
+    # "nothing pointing to" NO) since that's the one part of the old
+    # 3-line version that was explicitly asked to stay.
     lines.append("<b>\U0001F52E Day 5+</b>")
-    lines.append("- " + _long_range_pattern(outlook.get("long_coverage_pct")))
+    trend_label = outlook.get("long_trend_label") or _long_range_pattern(outlook.get("long_coverage_pct"))
     if outlook.get("max_long_total_in") is not None:
-        if outlook.get("sees_1in_plus"):
-            if outlook.get("sees_5in_plus"):
-                tier = "5\"+"
-            elif outlook.get("sees_3in_plus"):
-                tier = "3\"+"
-            else:
-                tier = "1\"+"
-            lines.append(f"- Heavier totals possible beyond day 5 -- up to {outlook['max_long_total_in']}\" somewhere in the corridor, {tier} potential")
-        else:
-            lines.append(f"- Additional rainfall beyond day 5 looks light -- up to {outlook['max_long_total_in']}\" somewhere in the corridor, nothing pointing to 1\"+ totals")
-    if outlook["heavy_potential"]:
-        lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor (Euro/HRRR/GFS), watch for training storms/localized flooding")
+        lines.append(f"- {trend_label} -- up to {outlook['max_long_total_in']}\" possible somewhere in the corridor")
+    else:
+        lines.append(f"- {trend_label}")
+    if outlook.get("heavy_potential"):
+        lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor, watch for training storms/localized flooding")
     else:
         lines.append("- Heavy rain potential: nothing pointing to 1\"+/hr training storms right now")
 
@@ -653,6 +675,30 @@ AFD_FRONT_KEYWORDS = [
     "APPROACHING FRONT", "WEAK FRONT", "DIFFUSE FRONT",
 ]
 
+_WEEKDAY_RE = re.compile(r"\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b", re.I)
+
+AFD_SEVERE_KEYWORDS = [
+    "SEVERE", "TORNADO", "DAMAGING WIND", "LARGE HAIL", "STRONG STORMS",
+    "STRONG THUNDERSTORMS", "HIGH WIND",
+]
+
+
+def _summarize_afd_front_mentions(mentions):
+    """Per instruction: don't quote the NWS forecaster's full sentences
+    (too much to read) -- just pull out which day(s) they're talking
+    about, and flag it if their own wording calls for severe weather."""
+    days = []
+    severe = False
+    for mention in mentions:
+        excerpt = mention["excerpt"]
+        for m in _WEEKDAY_RE.finditer(excerpt):
+            day = m.group(1).capitalize()
+            if day not in days:
+                days.append(day)
+        if any(kw in excerpt.upper() for kw in AFD_SEVERE_KEYWORDS):
+            severe = True
+    return days, severe
+
 
 def fetch_afd_front_mention():
     """Checks the latest NWS Houston/Lake Charles Area Forecast
@@ -715,13 +761,12 @@ def build_front_signal_section(signal, afd_front_mentions=None):
             if signal["shift_to_north"]:
                 when = f" {signal['wind_shift_time']}" if signal.get("wind_shift_time") else ""
                 lines.append(f"- Winds turning more northerly{when} -- front pushing through")
-            if not numeric_flagged and afd_front_mentions:
-                lines.append(f"- Models alone aren't in full agreement yet (dewpoint {signal.get('dewpoint_agreement_pct', 0)}%, temp {signal.get('temp_agreement_pct', 0)}%), but NWS's forecast discussion backs it up:")
         if afd_front_mentions:
-            if numeric_flagged:
-                lines.append("- NWS forecaster discussion also mentions a front:")
-            for mention in afd_front_mentions:
-                lines.append(f"    “{mention['excerpt']}” — {mention['office']}")
+            days, severe = _summarize_afd_front_mentions(afd_front_mentions)
+            lead = "NWS forecaster discussion also mentions a front" if numeric_flagged else "Models aren't fully agreeing yet, but NWS's forecast discussion mentions a front"
+            when = f" -- expected around {', '.join(days)}" if days else ""
+            severe_bit = " (could bring severe weather)" if severe else ""
+            lines.append(f"- {lead}{when}{severe_bit}")
     if signal and signal["cooling_signal"]:
         when = f" ({signal['temp_drop_time']})" if signal.get("temp_drop_time") else ""
         lines.append(f"- Meaningful cooling signal (Euro): up to {signal['temp_drop_f']}F in 24h{when}, {signal.get('temp_agreement_pct', 0)}% of the corridor agrees")
