@@ -407,31 +407,29 @@ def next_issuance_central(day_key, issued_str=None):
 def build_message(day_key, text):
     cfg = OUTLOOKS[day_key]
     issued = issued_time_from_header(text)
-    parts = []
+    parts = [f"⛈️ <b>{cfg['label']}</b>"]
     if issued:
-        parts.append(f"Issued: {issued}")
-        parts.append("")
-    parts.append(cfg["label"])
+        parts.append(f"📅 Issued: {issued}")
     parts.append("")
 
     headline = headline_section(text)
     if headline:
-        parts.append(headline)
+        parts.append(f"⚠️ {headline}")
         parts.append("")
 
     summary = summary_section(text)
     if summary:
-        parts.append(summary)
+        parts.append(f"📝 {summary}")
         parts.append("")
 
     try:
         next_time = next_issuance_central(day_key, issued_str=issued)
-        parts.append(f"Next {cfg['label']}: {next_time}")
+        parts.append(f"⏭️ Next {cfg['label']}: {next_time}")
         parts.append("")
     except Exception as e:
         print(f"[{day_key}] Could not compute next issuance time (non-fatal): {e}")
 
-    parts.append(f"View live: {cfg['nhc_fallback'].split('?')[0].replace('.html?text', '.html').replace('?text', '')}")
+    parts.append(f"🔗 View live: {cfg['nhc_fallback'].split('?')[0].replace('.html?text', '.html').replace('?text', '')}")
     return "\n".join(parts).rstrip()
 
 
@@ -511,18 +509,16 @@ def watch_graphic_url(watch_num):
 
 def build_watch_message(watch_type, watch_num, text):
     issued = issued_time_from_header(text)
-    parts = []
+    parts = [f"🚨 <b>SPC {watch_type} Watch #{watch_num}</b>"]
     if issued:
-        parts.append(f"Issued: {issued}")
-        parts.append("")
-    parts.append(f"SPC {watch_type} Watch #{watch_num}")
+        parts.append(f"📅 Issued: {issued}")
     parts.append("")
     body = re.sub(r"\s+", " ", text).strip()
     if len(body) > 3500:
         body = body[:3500] + "..."
     parts.append(body)
     parts.append("")
-    parts.append(f"View live: https://www.spc.noaa.gov/products/watch/ww{watch_num:04d}.html")
+    parts.append(f"🔗 View live: https://www.spc.noaa.gov/products/watch/ww{watch_num:04d}.html")
     return "\n".join(parts)
 
 
