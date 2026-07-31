@@ -29,6 +29,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install eccodes (optional -- HREF backup check only)
+        run: pip install --quiet eccodes || echo "eccodes install failed -- HREF backup will be skipped, core HRRR alert unaffected"
+
       - name: Run continuous HRRR alert polling loop
         env:
           WXMODEL_TELEGRAM_BOT_TOKEN: ${{ secrets.WXMODEL_TELEGRAM_BOT_TOKEN }}

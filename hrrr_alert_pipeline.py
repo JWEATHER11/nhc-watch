@@ -29,9 +29,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import href_check
 import setx_swla_extra as sx
 
 STATE_FILE = Path(__file__).parent / "hrrr_alert_state.json"
+HREF_RECHECK_INTERVAL_MIN = 60
 BEAUMONT_TZ = ZoneInfo("America/Chicago")
 MAX_ATTEMPTS = 2
 RETRY_DELAY_SEC = 2
@@ -313,6 +315,9 @@ def build_hrrr_alert_message(current, reasons):
         near = f" near {current.get('max_gust_near')}" if current.get("max_gust_near") else ""
         when = f" -- {_format_onset(current['max_gust_hour_str'])}" if current.get("max_gust_hour_str") else ""
         lines.append(f"💨 Wind: gusts up to {current['max_gust_mph']} mph{near}{when}")
+    href_line = _href_summary_line(current.get("href"), now_local)
+    if href_line:
+        lines.append(href_line)
     return "\n".join(lines)
 
 
@@ -385,11 +390,75 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
+def _get_href_corroboration(state):
+    """HREF is fetched from raw NOMADS grib files (~2 small byte-range
+    downloads + a parse), not Open-Meteo -- cheap, but no reason to
+    redo it every 30-min loop tick when the underlying HREF cycle only
+    updates 4x/day. Cached in state and only refreshed once an hour;
+    any fetch failure just falls back to the last good cached read
+    (or None) rather than blocking the core HRRR alert."""
+    cached = state.get("href_cache") or {}
+    fetched_at = cached.get("fetched_at")
+    stale = True
+    if fetched_at:
+        try:
+            age_min = (datetime.now(timezone.utc) - datetime.fromisoformat(fetched_at)).total_seconds() / 60
+            stale = age_min >= HREF_RECHECK_INTERVAL_MIN
+        except ValueError:
+            stale = True
+    if stale:
+        try:
+            result = href_check.fetch_href_corroboration()
+        except Exception:
+            result = None
+        if result:
+            state["href_cache"] = {"fetched_at": datetime.now(timezone.utc).isoformat(), "data": result}
+            return result
+    return cached.get("data")
+
+
+def _href_summary_line(href_data, now_local):
+    """One line: what real HREF (not the coarse GEFS that tested
+    unusable) shows for today and tomorrow, as a second opinion next
+    to HRRR's own numbers -- corridor-wide max % chance of >=0.5in,
+    named to the actual weekday like everything else in this message."""
+    if not href_data:
+        return None
+    try:
+        cycle = datetime.fromisoformat(href_data["cycle"])
+    except (KeyError, ValueError):
+        return None
+    parts = []
+    for day_key, offset_hours in (("day1", 12), ("day2", 36)):
+        sampled = href_data.get(day_key)
+        if not sampled:
+            continue
+        midpoint_local = (cycle + timedelta(hours=offset_hours)).astimezone(BEAUMONT_TZ)
+        day_diff = (midpoint_local.date() - now_local.date()).days
+        weekday = midpoint_local.strftime("%A")
+        if day_diff == 0:
+            label = f"{weekday} (today)"
+        elif day_diff == 1:
+            label = f"{weekday} (tomorrow)"
+        else:
+            label = weekday
+        best_city, best_pct = max(sampled.items(), key=lambda kv: kv[1])
+        if best_pct >= 10:
+            parts.append(f"{label} {best_pct}% near {best_city}")
+        else:
+            parts.append(f"{label} {best_pct}%")
+    if not parts:
+        return None
+    return "🎲 HREF backup: " + " · ".join(parts)
+
+
 def process_hrrr_alert(state):
     current = fetch_hrrr_alert_signal()
     if not current:
         print("HRRR signal unavailable this cycle (non-fatal) -- skipping.")
         return
+
+    current["href"] = _get_href_corroboration(state)
 
     last = state.get("last_alerted")
     should_alert, reasons = check_hrrr_alert_trigger(current, last)

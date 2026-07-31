@@ -10,6 +10,7 @@ current = h.fetch_hrrr_alert_signal()
 if not current:
     print("HRRR signal unavailable this cycle.")
     raise SystemExit(1)
+current["href"] = h._get_href_corroboration(h.load_state())
 
 print(f"Current signal: {current}")
 reasons = ["Test resend -- current HRRR signal, not necessarily a real change"]
