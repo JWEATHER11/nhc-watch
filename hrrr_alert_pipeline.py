@@ -120,11 +120,15 @@ def fetch_hrrr_alert_signal():
     # alert. See radar_prototype/NOTES.md and setx_swla_extra.py's
     # _has_neighbor_support for the same reasoning.
     peak_gust_grid = {}
+    peak_gust_hour = {}
     for idx, point in enumerate(points):
-        gusts = [g for g in point.get("hourly", {}).get("wind_gusts_10m", []) if g is not None]
-        if gusts:
+        gust_series = point.get("hourly", {}).get("wind_gusts_10m", [])
+        valid = [(h, g) for h, g in enumerate(gust_series) if g is not None]
+        if valid:
             row, col = idx // sx.HRRR_GRID_COLS, idx % sx.HRRR_GRID_COLS
-            peak_gust_grid[(row, col)] = max(gusts)
+            best_h, best_g = max(valid, key=lambda hg: hg[1])
+            peak_gust_grid[(row, col)] = best_g
+            peak_gust_hour[(row, col)] = best_h
 
     def _gust_has_neighbor_support(row, col, value):
         if value < 35.0:
@@ -139,12 +143,21 @@ def fetch_hrrr_alert_signal():
             return True
         return max(neighbor_vals) >= max(15.0, value * 0.5)
 
-    max_gust, max_gust_near = 0.0, None
+    max_gust, max_gust_near, max_gust_hour_idx = 0.0, None, None
     for (row, col), peak in peak_gust_grid.items():
         if peak > max_gust and _gust_has_neighbor_support(row, col, peak):
             max_gust = peak
             glat, glon = grid_points[row * sx.HRRR_GRID_COLS + col]
             max_gust_near = sx._nearest_city_label(glat, glon)
+            max_gust_hour_idx = peak_gust_hour[(row, col)]
+
+    max_gust_hour_str = None
+    if max_gust_hour_idx is not None and max_gust_hour_idx < len(hours):
+        try:
+            gust_dt_utc = datetime.fromisoformat(hours[max_gust_hour_idx]).replace(tzinfo=timezone.utc)
+            max_gust_hour_str = gust_dt_utc.astimezone(BEAUMONT_TZ).isoformat()
+        except ValueError:
+            pass
 
     onset_hour_str = None
     if onset_hour_idx is not None and onset_hour_idx < len(hours):
@@ -162,7 +175,20 @@ def fetch_hrrr_alert_signal():
         "onset_hour_str": onset_hour_str,
         "max_gust_mph": round(max_gust, 1),
         "max_gust_near": max_gust_near,
+        "max_gust_hour_str": max_gust_hour_str,
+        "run_cycle_str": estimate_hrrr_cycle().isoformat(),
     }
+
+
+def estimate_hrrr_cycle():
+    """HRRR runs hourly (not the 6-hourly 00/06/12/18Z cadence of
+    GFS/ECMWF), and Open-Meteo's response doesn't expose the exact init
+    time either -- this estimates the most recent likely run using
+    HRRR's typical ~70-90 minute publication delay, same spirit as
+    wxmodel_pipeline.py's estimate_model_cycle for the 6-hourly models."""
+    now_utc = datetime.now(timezone.utc)
+    effective_time = now_utc - timedelta(hours=1.5)
+    return effective_time.replace(minute=0, second=0, microsecond=0)
 
 
 def check_hrrr_alert_trigger(current, last):
@@ -204,6 +230,9 @@ def check_hrrr_alert_trigger(current, last):
 
 
 def _format_onset(iso_str):
+    """Always names the actual weekday (Thursday, Friday, ...) rather
+    than just 'today'/'tomorrow' -- per instruction, don't make the
+    reader work out which real day that refers to themselves."""
     if not iso_str:
         return "an unclear time"
     try:
@@ -212,17 +241,40 @@ def _format_onset(iso_str):
         return "an unclear time"
     now_local = datetime.now(BEAUMONT_TZ)
     day_diff = (dt.date() - now_local.date()).days
-    label = "today" if day_diff == 0 else ("tomorrow" if day_diff == 1 else dt.strftime("%A"))
+    weekday = dt.strftime("%A")
+    if day_diff == 0:
+        label = f"{weekday} (today)"
+    elif day_diff == 1:
+        label = f"{weekday} (tomorrow)"
+    else:
+        label = weekday
     return f"{label} around {dt.strftime('%I %p').lstrip('0')}"
 
 
 def build_hrrr_alert_message(current, reasons):
     now_local = datetime.now(BEAUMONT_TZ)
-    lines = ["<b>⛈️ HRRR Update</b> -- Beaumont time", now_local.strftime("%b %-d %I:%M %p").replace(" 0", " "), ""]
+    run_str = "unknown"
+    if current.get("run_cycle_str"):
+        try:
+            run_dt = datetime.fromisoformat(current["run_cycle_str"]).astimezone(BEAUMONT_TZ)
+            run_str = run_dt.strftime("%I %p").lstrip("0") + " CDT run (est.)"
+        except ValueError:
+            pass
+    lines = [
+        "<b>⛈️ HRRR Update</b> -- Beaumont time",
+        now_local.strftime("%A, %b %-d %I:%M %p").replace(" 0", " "),
+        f"HRRR {run_str}",
+        "",
+    ]
     for r in reasons:
         lines.append(f"- {r}")
     lines.append("")
-    lines.append(f"Coverage: {current.get('coverage_pct')}% of the corridor")
+    # "Coverage" here specifically means heavy rain (>=2.5" total over the
+    # 2-day window) -- a real storm producing strong gusts and under an
+    # inch of rain will legitimately show 0% by that narrow definition,
+    # which read as "nothing's happening" right next to a real gust alert
+    # until this was labeled precisely.
+    lines.append(f"Heavy rain coverage (≥2.5\" total): {current.get('coverage_pct')}% of the corridor")
     if current.get("max_total_in"):
         near = f" near {current.get('max_near')}" if current.get("max_near") else ""
         lines.append(f"Rainfall: up to {current['max_total_in']}\" possible{near}")
@@ -230,7 +282,8 @@ def build_hrrr_alert_message(current, reasons):
         lines.append(f"Timing: rain looks to move in around {_format_onset(current['onset_hour_str'])}")
     if current.get("max_gust_mph"):
         near = f" near {current.get('max_gust_near')}" if current.get("max_gust_near") else ""
-        lines.append(f"Winds: gusts up to {current['max_gust_mph']} mph possible{near}")
+        when = f" {_format_onset(current['max_gust_hour_str'])}" if current.get("max_gust_hour_str") else ""
+        lines.append(f"Winds: gusts up to {current['max_gust_mph']} mph possible{near}{when}")
     return "\n".join(lines)
 
 
