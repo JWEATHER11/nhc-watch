@@ -356,25 +356,25 @@ def main():
         return
 
     if signal_type == "strengthening":
-        header = "RECON SIGNAL: GETTING STRONGER"
+        header = "📈 <b>RECON SIGNAL: GETTING STRONGER</b>"
     else:
-        header = "RECON SIGNAL: GETTING WEAKER"
+        header = "📉 <b>RECON SIGNAL: GETTING WEAKER</b>"
 
     body_lines = [alert_reason]
     if storm_name or official_name:
-        body_lines.append(f"Storm: {storm_name or official_name}")
+        body_lines.append(f"🌀 Storm: {storm_name or official_name}")
     if aircraft:
-        body_lines.append(f"Aircraft: {aircraft}")
+        body_lines.append(f"✈️ Aircraft: {aircraft}")
     body_lines.append("")
     if official_wind_mph is not None:
-        body_lines.append(f"NHC official current wind: {official_wind_mph} mph")
+        body_lines.append(f"🏛️ NHC official current wind: {official_wind_mph} mph")
     if official_pressure_mb is not None:
-        body_lines.append(f"NHC official current pressure: {official_pressure_mb} mb")
+        body_lines.append(f"🏛️ NHC official current pressure: {official_pressure_mb} mb")
     body_lines.append("")
     if batch_wind_mph is not None:
-        body_lines.append(f"Recon just found: {batch_wind_mph} mph wind at {latest_time}")
+        body_lines.append(f"💨 Recon just found: {batch_wind_mph} mph wind at {latest_time}")
     if batch_min_pressure_mb is not None:
-        body_lines.append(f"Recon just found: {batch_min_pressure_mb:.1f} mb pressure at {latest_time}")
+        body_lines.append(f"📊 Recon just found: {batch_min_pressure_mb:.1f} mb pressure at {latest_time}")
 
     full_message = f"{header}\n\n" + "\n".join(body_lines)
     print(f"Full message:\n{full_message}")

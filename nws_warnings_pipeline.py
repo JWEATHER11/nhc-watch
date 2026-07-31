@@ -26,9 +26,9 @@ from pathlib import Path
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
 
 WARNING_TYPES = {
-    "tor": {"pil_prefix": "TOR", "label": "Tornado Warning", "color": "#e60000"},
-    "svr": {"pil_prefix": "SVR", "label": "Severe Thunderstorm Warning", "color": "#ffd400"},
-    "ffw": {"pil_prefix": "FFW", "label": "Flash Flood Warning", "color": "#00a651"},
+    "tor": {"pil_prefix": "TOR", "label": "Tornado Warning", "color": "#e60000", "emoji": "🌪️"},
+    "svr": {"pil_prefix": "SVR", "label": "Severe Thunderstorm Warning", "color": "#ffd400", "emoji": "⛈️"},
+    "ffw": {"pil_prefix": "FFW", "label": "Flash Flood Warning", "color": "#00a651", "emoji": "🌊"},
 }
 
 OFFICES = {
@@ -426,21 +426,19 @@ def send_failure_alert(context, error):
 
 def build_message(warn_key, office_key, text):
     label = WARNING_TYPES[warn_key]["label"]
+    emoji = WARNING_TYPES[warn_key]["emoji"]
     office_name = OFFICES[office_key]
     issued = issued_time_from_header(text)
     body, tag_line, until_time = clean_body(text)
-    parts = []
+    parts = [f"{emoji} <b>NWS {office_name} -- {label}</b>"]
     if tag_line:
         parts.append(tag_line)
-        parts.append("")
     if issued:
         issued_clean = convert_times(issued)
         if until_time:
-            parts.append(f"Issued: {issued_clean} -- Until: {until_time}")
+            parts.append(f"📅 Issued: {issued_clean} -- Until: {until_time}")
         else:
-            parts.append(f"Issued: {issued_clean}")
-        parts.append("")
-    parts.append(f"NWS {office_name} -- {label}")
+            parts.append(f"📅 Issued: {issued_clean}")
     parts.append("")
     parts.append(body)
     return "\n".join(parts).strip()
