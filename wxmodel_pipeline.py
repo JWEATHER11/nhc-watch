@@ -1145,6 +1145,11 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
         print(f"[Combined cycle] HRRR grid detail unavailable (non-fatal): {e}")
         hrrr_detail, hrrr_grid_lines = None, None
     try:
+        wind_today_tomorrow = _sx2.fetch_today_tomorrow_wind()
+    except Exception as e:
+        print(f"[Combined cycle] Today/tomorrow wind unavailable (non-fatal): {e}")
+        wind_today_tomorrow = None
+    try:
         ndfd_today_tomorrow, ndfd_days_3_5 = _sx2.fetch_ndfd_qpf_by_range()
     except Exception as e:
         print(f"[Combined cycle] NDFD range data unavailable (non-fatal): {e}")
@@ -1205,11 +1210,15 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, aifs_scan,
     else:
         summary_lines.append("🌬️ Front: none indicated this cycle")
 
+    peak_note = _sx2.peak_day_note(seven_day)
+    if peak_note:
+        summary_lines.append(f"📅 {peak_note}")
+
     lines.extend(summary_lines)
     lines.append("")
 
     lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
-    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note))
+    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow))
     try:
         conditions_detail = _sx2.fetch_conditions_detail()
         temp_blend = _sx2.fetch_temperature_blend()

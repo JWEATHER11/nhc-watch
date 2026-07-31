@@ -309,6 +309,47 @@ def fetch_ndfd_qpf_by_range():
     return (today_tomorrow or None), (days_3_5 or None)
 
 
+NDFD_TEMP_BLEND_WEIGHT = 0.15  # a light NDFD nudge, per instruction -- Euro/HRRR stays the primary driver of the 7-Day Forecast temps
+
+
+def fetch_ndfd_temps_by_day():
+    """NDFD max/min temps from the same NWS gridpoint source as the
+    QPF fetch above, bucketed by local Beaumont-time day offset --
+    used as a light blend-in for the 7-Day Forecast temps, per
+    instruction: mainly Euro (day 3-7) / HRRR+Euro (day 0-1), with a
+    little NDFD folded in, not the primary driver."""
+    import datetime as _dt
+    now_local = _dt.datetime.now(w.BEAUMONT_TZ)
+    today_date = now_local.date()
+
+    highs_by_day, lows_by_day = {}, {}
+    for office_name, url in NDFD_OFFICES.items():
+        data = w._fetch_with_retries_bytes(url, f"NDFD_temps:{office_name}")
+        if not data:
+            continue
+        try:
+            parsed = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        props = parsed.get("properties", {})
+        for key, bucket in (("maxTemperature", highs_by_day), ("minTemperature", lows_by_day)):
+            for entry in props.get(key, {}).get("values", []):
+                val_c = entry.get("value")
+                valid_time = entry.get("validTime", "")
+                if val_c is None or "/" not in valid_time:
+                    continue
+                try:
+                    start_dt = _dt.datetime.fromisoformat(valid_time.split("/")[0]).astimezone(w.BEAUMONT_TZ)
+                except ValueError:
+                    continue
+                day_offset = (start_dt.date() - today_date).days
+                if 0 <= day_offset <= 6:
+                    bucket.setdefault(day_offset, []).append(val_c * 9 / 5 + 32)
+    highs = {d: round(sum(v) / len(v)) for d, v in highs_by_day.items()}
+    lows = {d: round(sum(v) / len(v)) for d, v in lows_by_day.items()}
+    return highs, lows
+
+
 def describe_ndfd_change(current_totals, previous_totals, send_count_today):
     """Decides whether the NWS comparison is actually worth sending,
     per instruction -- strict: only when something meaningfully changed,
@@ -339,14 +380,20 @@ def describe_ndfd_change(current_totals, previous_totals, send_count_today):
 
 
 PEAK_DAY_CALLOUT_THRESHOLD_PCT = 20
+HEAVY_DAY_CALLOUT_THRESHOLD_PCT = 50
 WEEKDAY_NAMES_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _peak_day_note(seven_day):
+def peak_day_note(seven_day):
     """Plain fact, not commentary -- just finds the day with the
-    highest already-computed rain%, per instruction. Only called out
-    when it's a real standout (>= threshold), so a quiet week with
-    every day near 0% doesn't get a pointless 'best chance' line."""
+    highest already-computed rain% (HRRR/Euro blend for days 0-1,
+    Euro/ensemble blend for days 2-6, per fetch_seven_day_forecast),
+    per instruction. Only called out when it's a real standout (>=
+    threshold), so a quiet week with every day near 0% doesn't get a
+    pointless 'best chance' line. Also flags if that same day clears a
+    distinctly higher bar worth calling "heavy" -- per instruction,
+    only mention heavy rain if a day actually earns it, otherwise stay
+    silent on that part rather than saying "no heavy rain" every time."""
     if not seven_day:
         return None
     import datetime as _dt
@@ -359,7 +406,8 @@ def _peak_day_note(seven_day):
         return None
     day_date = now_local + _dt.timedelta(days=best_idx)
     label = "Today" if best_idx == 0 else WEEKDAY_NAMES_FULL[day_date.weekday()]
-    return f"Best chance for coverage/heavier rain this week: {label} (~{best_pct}%)"
+    heavy_bit = ", heaviest rain chance too" if best_pct >= HEAVY_DAY_CALLOUT_THRESHOLD_PCT else ""
+    return f"Best chance for coverage/heavier rain this week: {label} (~{best_pct}%{heavy_bit})"
 
 
 SETX_SWLA_WPC_KEYWORDS = [
@@ -405,7 +453,7 @@ def fetch_setx_swla_wpc_corroboration():
     return None
 
 
-def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None):
+def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None):
     if not outlook:
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
@@ -415,20 +463,36 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
     # grid with HRRR weighted 65% / Euro 35%, per instruction -- must
     # use HRRR on the large grid so a small storm can't fall entirely
     # between points, and this avoids a second, different-grid answer
-    # for the same two days.
+    # for the same two days. Per instruction: full per-day breakdown
+    # (high/low, rain%, rain amount, wind) instead of one combined
+    # coverage sentence for both days -- and only call out heavy rain
+    # or a strong gust when they're actually there.
     lines.append("<b>\U0001F4C6 Today & Tomorrow</b>")
     if seven_day and seven_day[0] and seven_day[1]:
         d0, d1 = seven_day[0], seven_day[1]
-        avg_pct = round((d0["rain_pct"] + d1["rain_pct"]) / 2)
-        if avg_pct < 10:
-            lines.append("- Dry -- HRRR/Euro blend shows mostly dry conditions across the corridor today and tomorrow.")
-        else:
-            cov = _coverage_word(avg_pct) or "some chances"
-            lines.append(f"- {cov.capitalize()} -- HRRR/Euro blend shows ~{avg_pct}% coverage today and tomorrow.")
+        rain_near = f" near {hrrr_detail['max_near']}" if hrrr_detail and hrrr_detail.get("max_near") else ""
+        today_rain_in = hrrr_detail.get("max_today_in") if hrrr_detail else None
+        tomorrow_rain_in = hrrr_detail.get("max_tomorrow_in") if hrrr_detail else None
+        today_wind = wind_today_tomorrow[0] if wind_today_tomorrow else None
+        tomorrow_wind = wind_today_tomorrow[1] if wind_today_tomorrow else None
+
+        def day_line(label, day, rain_in, wind):
+            bits = [f"High {day['high']}F / Low {day['low']}F", f"{day['rain_pct']}% rain chance"]
+            if rain_in is not None:
+                bits.append(f"up to {rain_in}\" possible{rain_near}")
+            if wind:
+                gust_bit = f"gusts avg {wind['avg_gust_mph']} mph"
+                if wind["max_gust_mph"] >= STRONG_GUST_TODAY_TOMORROW_MPH:
+                    gust_bit += f" (strong gusts possible, up to {wind['max_gust_mph']} mph)"
+                bits.append(gust_bit)
+            if rain_in is not None and rain_in >= 1.5:
+                bits.append("heavy rain possible")
+            return f"- {label}: " + ", ".join(bits)
+
+        lines.append(day_line("Today", d0, today_rain_in, today_wind))
+        lines.append(day_line("Tomorrow", d1, tomorrow_rain_in, tomorrow_wind))
     else:
         lines.append("- Data unavailable this cycle.")
-    if hrrr_grid_lines:
-        lines.extend(hrrr_grid_lines)
     if ndfd_today_tomorrow:
         nws_parts = [f"{office} {total}\"" for office, total in ndfd_today_tomorrow.items()]
         lines.append("- NWS: " + ", ".join(nws_parts))
@@ -471,11 +535,6 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
         lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor, watch for training storms/localized flooding")
     else:
         lines.append("- Heavy rain potential: nothing pointing to 1\"+/hr training storms right now")
-
-    peak_note = _peak_day_note(seven_day)
-    if peak_note:
-        lines.append("")
-        lines.append(f"- {peak_note}")
 
     if wpc_setx_swla_note:
         lines.append("")
@@ -1565,6 +1624,45 @@ SEVEN_DAY_POINTS = {
     "Orange": (30.09, -93.74),
 }
 
+STRONG_GUST_TODAY_TOMORROW_MPH = 35  # below HRRR alert's 50mph -- this is a routine daily-outlook heads-up, not a severe alert
+
+
+def fetch_today_tomorrow_wind():
+    """Per-day (today/tomorrow) wind gust blend across the same 7-town
+    corridor points used for the temperature blend, per instruction --
+    average gust plus a flag for whether a genuinely strong gust
+    (>= STRONG_GUST_TODAY_TOMORROW_MPH) is in play that day."""
+    names = list(SEVEN_DAY_POINTS.keys())
+    lat_str = ",".join(str(SEVEN_DAY_POINTS[n][0]) for n in names)
+    lon_str = ",".join(str(SEVEN_DAY_POINTS[n][1]) for n in names)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=wind_gusts_10m_max&forecast_days=2&wind_speed_unit=mph&_cb={cache_buster}"
+    )
+    data = w._fetch_with_retries_bytes(url, "TodayTomorrowWind")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list):
+        return None
+    result = []
+    for day_idx in range(2):
+        vals = []
+        for point in points:
+            arr = point.get("daily", {}).get("wind_gusts_10m_max", [])
+            if day_idx < len(arr) and arr[day_idx] is not None:
+                vals.append(arr[day_idx])
+        if vals:
+            result.append({"avg_gust_mph": round(sum(vals) / len(vals)), "max_gust_mph": round(max(vals))})
+        else:
+            result.append(None)
+    return result
+
 
 def fetch_temperature_blend():
     """High/low blended across Houston-Beaumont-Lumberton-Silsbee, per
@@ -1759,6 +1857,22 @@ def fetch_seven_day_forecast(ndfd_totals=None):
     # deterministic Euro run's point-threshold check can miss.
     ensemble_coverage = fetch_ensemble_precip_coverage(forecast_days=7)
 
+    # Light NDFD nudge on temps across all 7 days, per instruction --
+    # Euro (day 3-7) / HRRR+Euro (day 0-1) stay the primary driver.
+    try:
+        ndfd_highs, ndfd_lows = fetch_ndfd_temps_by_day()
+    except Exception as e:
+        print(f"[7-day] NDFD temp blend unavailable (non-fatal): {e}")
+        ndfd_highs, ndfd_lows = {}, {}
+
+    def blend_ndfd_temp(model_val, ndfd_by_day, day_idx):
+        if model_val is None:
+            return None
+        ndfd_val = ndfd_by_day.get(day_idx)
+        if ndfd_val is None:
+            return model_val
+        return round(model_val * (1 - NDFD_TEMP_BLEND_WEIGHT) + ndfd_val * NDFD_TEMP_BLEND_WEIGHT)
+
     days = []
     for day_idx in range(7):
         if day_idx <= 1:
@@ -1775,17 +1889,18 @@ def fetch_seven_day_forecast(ndfd_totals=None):
             euro_cov = grid_coverage_pct(euro_grid, day_idx)
             ens_cov = ensemble_coverage.get(day_idx) if ensemble_coverage else None
             if euro_cov is not None and ens_cov is not None:
-                # Blend deterministic Euro with ensemble spread --
-                # averaged, not just taken outright, so a high
-                # ensemble spread doesn't override into being overly
-                # aggressive on its own, per instruction.
-                rain_pct = round((euro_cov + ens_cov) / 2)
+                # Euro weighted heavy, ensemble as a smaller
+                # cross-check nudge, per instruction.
+                rain_pct = round(euro_cov * 0.7 + ens_cov * 0.3)
             else:
                 rain_pct = euro_cov if euro_cov is not None else ens_cov
             if rain_pct is not None and nws_wet_signal:
                 rain_pct = min(100, rain_pct + 5)  # light nudge only
             high = temp_avg(euro_temps, day_idx, "temperature_2m_max")
             low = temp_avg(euro_temps, day_idx, "temperature_2m_min")
+
+        high = blend_ndfd_temp(high, ndfd_highs, day_idx)
+        low = blend_ndfd_temp(low, ndfd_lows, day_idx)
 
         if high is None or low is None:
             days.append(None)
