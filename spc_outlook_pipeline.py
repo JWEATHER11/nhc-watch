@@ -407,7 +407,7 @@ def next_issuance_central(day_key, issued_str=None):
 def build_message(day_key, text):
     cfg = OUTLOOKS[day_key]
     issued = issued_time_from_header(text)
-    parts = [f"⛈️ <b>{cfg['label']}</b>"]
+    parts = [f"⛈️ {cfg['label']}"]
     if issued:
         parts.append(f"📅 Issued: {issued}")
     parts.append("")
@@ -509,7 +509,7 @@ def watch_graphic_url(watch_num):
 
 def build_watch_message(watch_type, watch_num, text):
     issued = issued_time_from_header(text)
-    parts = [f"🚨 <b>SPC {watch_type} Watch #{watch_num}</b>"]
+    parts = [f"🚨 SPC {watch_type} Watch #{watch_num}"]
     if issued:
         parts.append(f"📅 Issued: {issued}")
     parts.append("")
