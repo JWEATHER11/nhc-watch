@@ -38,7 +38,7 @@ def fetch_setx_swla_rainfall_outlook():
             f"https://api.open-meteo.com/v1/{endpoint}"
             f"?latitude={lat_str}&longitude={lon_str}"
             f"&daily=precipitation_sum&hourly=precipitation"
-            f"&forecast_days={forecast_days}{models_bit}&_cb={cache_buster}"
+            f"&forecast_days={forecast_days}{models_bit}&timezone=America/Chicago&_cb={cache_buster}"
         )
         data = w._fetch_with_retries_bytes(url, f"SETX_SWLA:{endpoint}:{models_param or 'auto'}")
         if not data:
@@ -1040,7 +1040,7 @@ def fetch_conditions_detail():
         f"?latitude={lat_str}&longitude={lon_str}"
         f"&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,dewpoint_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation"
         f"&daily=temperature_2m_max,temperature_2m_min"
-        f"&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&_cb={cache_buster}"
+        f"&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Chicago&_cb={cache_buster}"
     )
     data = w._fetch_with_retries_bytes(url, "ConditionsDetail:ecmwf")
     if not data:
@@ -1344,7 +1344,7 @@ def fetch_temperature_gradient():
         f"https://api.open-meteo.com/v1/ecmwf"
         f"?latitude={lat_str}&longitude={lon_str}"
         f"&daily=temperature_2m_max,temperature_2m_min"
-        f"&forecast_days=3&temperature_unit=fahrenheit&_cb={cache_buster}"
+        f"&forecast_days=3&temperature_unit=fahrenheit&timezone=America/Chicago&_cb={cache_buster}"
     )
     data = w._fetch_with_retries_bytes(url, "TempGradient:ecmwf")
     if not data:
@@ -1406,7 +1406,7 @@ def fetch_temperature_buckets():
         f"https://api.open-meteo.com/v1/ecmwf"
         f"?latitude={lat_str}&longitude={lon_str}"
         f"&daily=temperature_2m_max&hourly=dewpoint_2m"
-        f"&forecast_days=10&temperature_unit=fahrenheit&_cb={cache_buster}"
+        f"&forecast_days=10&temperature_unit=fahrenheit&timezone=America/Chicago&_cb={cache_buster}"
     )
     data = w._fetch_with_retries_bytes(url, "TempBuckets:ecmwf")
     if not data:
@@ -1512,7 +1512,7 @@ def fetch_hrrr_grid_detail():
             f"https://api.open-meteo.com/v1/forecast"
             f"?latitude={lat_str}&longitude={lon_str}"
             f"&daily=precipitation_sum{models_bit}"
-            f"&forecast_days=2&_cb={cache_buster}"
+            f"&forecast_days=2&timezone=America/Chicago&_cb={cache_buster}"
         )
         data = w._fetch_with_retries_bytes(url, f"HRRRGrid:{models_param or 'hrrr'}")
         if not data:
@@ -1686,7 +1686,7 @@ def fetch_today_tomorrow_wind():
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat_str}&longitude={lon_str}"
-        f"&daily=wind_gusts_10m_max&forecast_days=2&wind_speed_unit=mph&_cb={cache_buster}"
+        f"&daily=wind_gusts_10m_max&forecast_days=2&wind_speed_unit=mph&timezone=America/Chicago&_cb={cache_buster}"
     )
     data = w._fetch_with_retries_bytes(url, "TodayTomorrowWind")
     if not data:
@@ -1722,7 +1722,7 @@ def fetch_temperature_blend():
         f"https://api.open-meteo.com/v1/ecmwf"
         f"?latitude={lat_str}&longitude={lon_str}"
         f"&daily=temperature_2m_max,temperature_2m_min"
-        f"&forecast_days=1&temperature_unit=fahrenheit&_cb={cache_buster}"
+        f"&forecast_days=1&temperature_unit=fahrenheit&timezone=America/Chicago&_cb={cache_buster}"
     )
     data = w._fetch_with_retries_bytes(url, "TempBlend:ecmwf")
     if not data:
@@ -1768,7 +1768,7 @@ def fetch_ensemble_precip_coverage(forecast_days=7):
             f"https://ensemble-api.open-meteo.com/v1/ensemble"
             f"?latitude={lat_str}&longitude={lon_str}"
             f"&daily=precipitation_sum&models={models_param}"
-            f"&forecast_days={forecast_days}&_cb={cache_buster}"
+            f"&forecast_days={forecast_days}&timezone=America/Chicago&_cb={cache_buster}"
         )
         data = w._fetch_with_retries_bytes(url, f"EnsemblePrecip:{models_param}")
         if not data:
@@ -1829,7 +1829,7 @@ def fetch_seven_day_forecast(ndfd_totals=None):
         url = (
             f"https://api.open-meteo.com/v1/{endpoint}"
             f"?latitude={grid_lat_str}&longitude={grid_lon_str}"
-            f"&daily=precipitation_sum&forecast_days={forecast_days}{models_bit}&_cb={cache_buster}"
+            f"&daily=precipitation_sum&forecast_days={forecast_days}{models_bit}&timezone=America/Chicago&_cb={cache_buster}"
         )
         data = w._fetch_with_retries_bytes(url, f"SevenDayGrid:{endpoint}:{models_param or 'auto'}")
         if not data:
@@ -1866,7 +1866,7 @@ def fetch_seven_day_forecast(ndfd_totals=None):
             f"https://api.open-meteo.com/v1/{endpoint}"
             f"?latitude={temp_lat_str}&longitude={temp_lon_str}"
             f"&daily=temperature_2m_max,temperature_2m_min&forecast_days={forecast_days}{models_bit}"
-            f"&temperature_unit=fahrenheit&_cb={cache_buster}"
+            f"&temperature_unit=fahrenheit&timezone=America/Chicago&_cb={cache_buster}"
         )
         data = w._fetch_with_retries_bytes(url, f"SevenDayTemps:{endpoint}:{models_param or 'auto'}")
         if not data:
@@ -1978,7 +1978,7 @@ def fetch_wet_bulb_by_day():
     url = (
         f"https://api.open-meteo.com/v1/ecmwf"
         f"?latitude={lat_str}&longitude={lon_str}"
-        f"&hourly=wet_bulb_temperature_2m&forecast_days=7&temperature_unit=fahrenheit&_cb={cache_buster}"
+        f"&hourly=wet_bulb_temperature_2m&forecast_days=7&temperature_unit=fahrenheit&timezone=America/Chicago&_cb={cache_buster}"
     )
     data = w._fetch_with_retries_bytes(url, "WetBulb:ecmwf")
     if not data:
@@ -2016,25 +2016,38 @@ def fetch_wet_bulb_by_day():
             day_offset = (start_dt.date() - today_date).days
             if 0 <= day_offset <= 6:
                 wbgt_by_day.setdefault(day_offset, []).append(val_c * 9 / 5 + 32)
-    wbgt_max_by_day = {d: max(v) for d, v in wbgt_by_day.items()}
+    # Average of each office's own daily peak, not the single highest
+    # reading between the two -- same reasoning as the Euro side below.
+    wbgt_avg_by_day = {d: sum(v) / len(v) for d, v in wbgt_by_day.items()}
 
     days = []
     for day_idx in range(7):
-        vals = []
+        # Average of each TOWN's own daily peak, not the single hottest
+        # reading anywhere in the corridor. Wet-bulb peaks overnight/
+        # early morning in this climate (confirmed live: max values hit
+        # between midnight-4AM, not the afternoon), and one humid
+        # outlier town (e.g. Orange near the coast) running a few
+        # degrees above the rest was skewing this to feel like a single
+        # worst-case spot rather than "how it feels across our area" --
+        # the right metric for a regional heat-safety number, unlike
+        # rain where the isolated worst spot is exactly what matters.
+        town_peaks = []
         for point in points:
             arr = point.get("hourly", {}).get("wet_bulb_temperature_2m", [])
             start = day_idx * 24
             end = start + 24
-            vals.extend(v for v in arr[start:end] if v is not None)
-        if not vals:
+            day_vals = [v for v in arr[start:end] if v is not None]
+            if day_vals:
+                town_peaks.append(max(day_vals))
+        if not town_peaks:
             days.append(None)
             continue
-        euro_max = max(vals)
-        wbgt_max = wbgt_max_by_day.get(day_idx)
-        if wbgt_max is not None:
-            blended = round(euro_max * (1 - WET_BULB_NWS_BLEND_WEIGHT) + wbgt_max * WET_BULB_NWS_BLEND_WEIGHT)
+        euro_avg = sum(town_peaks) / len(town_peaks)
+        wbgt_avg = wbgt_avg_by_day.get(day_idx)
+        if wbgt_avg is not None:
+            blended = round(euro_avg * (1 - WET_BULB_NWS_BLEND_WEIGHT) + wbgt_avg * WET_BULB_NWS_BLEND_WEIGHT)
         else:
-            blended = round(euro_max)
+            blended = round(euro_avg)
         days.append(blended)
     return days
 

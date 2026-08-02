@@ -1475,7 +1475,7 @@ def _fetch_rainfall_totals(endpoint):
     url = (
         f"https://api.open-meteo.com/v1/{endpoint}"
         f"?latitude={lat_str}&longitude={lon_str}"
-        f"&daily=precipitation_sum&forecast_days=10&_cb={cache_buster}"
+        f"&daily=precipitation_sum&forecast_days=10&timezone=America/Chicago&_cb={cache_buster}"
     )
     data = _fetch_with_retries_bytes(url, f"GulfCoastRainfall:{endpoint}")
     if not data:
@@ -1505,7 +1505,7 @@ def _fetch_rainfall_totals_google_ai():
         f"https://ensemble-api.open-meteo.com/v1/ensemble"
         f"?latitude={lat_str}&longitude={lon_str}"
         f"&daily=precipitation_sum&models=google_weathernext2_ensemble"
-        f"&forecast_days=10&_cb={cache_buster}"
+        f"&forecast_days=10&timezone=America/Chicago&_cb={cache_buster}"
     )
     data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:google_ai")
     if not data:
