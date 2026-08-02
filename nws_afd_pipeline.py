@@ -252,11 +252,6 @@ def _is_big_change(new_text, old_text):
     return any(kw in new_upper and kw not in old_upper for kw in AFD_SEVERE_KEYWORDS)
 
 
-def _afd_slot(now_local):
-    """AM = before noon, PM/evening = noon onward, per instruction."""
-    return "am" if now_local.hour < 12 else "pm"
-
-
 def process_office(office_key, state):
     cfg = OFFICES[office_key]
     text, source = fetch_afd(office_key)
@@ -273,21 +268,32 @@ def process_office(office_key, state):
 
     now_local = datetime.now(BEAUMONT_TZ)
     today_str = now_local.strftime("%Y-%m-%d")
-    slot = _afd_slot(now_local)
     big_change = _is_big_change(text, last_text)
 
     if office_state.get("send_day") != today_str:
         office_state["send_day"] = today_str
-        office_state["slots_sent"] = []
+        office_state["am_sent"] = False
 
-    if not big_change and slot in office_state.get("slots_sent", []):
-        print(f"[{office_key}] Updated, but {slot.upper()} slot already sent today and nothing severe -- not resending (routine update).")
-        office_state["last_text"] = text
-        state[office_key] = office_state
-        save_state(state)
-        return
+    # Per instruction: only the early-AM update goes out routinely --
+    # NWS reissues these several times a day (overnight, morning,
+    # midday, evening), and getting all of them was too much. A newly-
+    # appearing severe-weather keyword still bypasses this, any time
+    # of day, since that's a real safety signal, not routine noise.
+    if not big_change:
+        if now_local.hour >= 12:
+            print(f"[{office_key}] Updated, but it's afternoon/evening and nothing severe -- not sending (AM-only per instruction).")
+            office_state["last_text"] = text
+            state[office_key] = office_state
+            save_state(state)
+            return
+        if office_state.get("am_sent"):
+            print(f"[{office_key}] Updated, but today's AM update already sent and nothing severe -- not resending.")
+            office_state["last_text"] = text
+            state[office_key] = office_state
+            save_state(state)
+            return
 
-    print(f"[{office_key}] Sending -- {'severe keyword newly appeared' if big_change else slot.upper() + ' slot'}.")
+    print(f"[{office_key}] Sending -- {'severe keyword newly appeared' if big_change else 'early-AM update'}.")
     message = build_message(office_key, text)
     print(f"[{office_key}] Message:\n{message[:500]}...")
 
@@ -299,7 +305,7 @@ def process_office(office_key, state):
 
     print(f"[{office_key}] Sent successfully.")
     office_state["last_text"] = text
-    office_state["slots_sent"] = list(set(office_state.get("slots_sent", []) + [slot]))
+    office_state["am_sent"] = True
     state[office_key] = office_state
     save_state(state)
 
