@@ -1957,7 +1957,7 @@ def fetch_seven_day_forecast(ndfd_totals=None):
     return days
 
 
-WET_BULB_NWS_BLEND_WEIGHT = 0.2  # a lighter nudge than the temp blend -- WBGT and plain wet-bulb aren't the same measurement (see fetch_wet_bulb_by_day)
+WET_BULB_NWS_BLEND_WEIGHT = 0.3  # per instruction: 70% Euro / 30% NWS -- Euro stays the primary driver, WBGT and plain wet-bulb aren't the same measurement (see fetch_wet_bulb_by_day)
 
 
 def fetch_wet_bulb_by_day():
