@@ -1957,6 +1957,106 @@ def fetch_seven_day_forecast(ndfd_totals=None):
     return days
 
 
+WET_BULB_NWS_BLEND_WEIGHT = 0.2  # a lighter nudge than the temp blend -- WBGT and plain wet-bulb aren't the same measurement (see fetch_wet_bulb_by_day)
+
+
+def fetch_wet_bulb_by_day():
+    """7-day wet-bulb temperature for the SETX corridor (Beaumont,
+    Houston, Lumberton, Silsbee, Woodville, Jasper, Orange -- same
+    7-town blend as the regular temp forecast), primarily from Euro's
+    real wet_bulb_temperature_2m field.
+
+    NWS's gridpoint API doesn't expose plain wet-bulb -- only Wet Bulb
+    Globe Temperature (WBGT), which also factors in solar radiation
+    and wind, not just temp+humidity. That's a genuinely different
+    physical quantity, not just a different source for the same one,
+    so it's blended in light (20%) as a cross-check rather than
+    averaged in as if it were an equivalent measurement."""
+    lat_str = ",".join(str(p[0]) for p in SEVEN_DAY_POINTS.values())
+    lon_str = ",".join(str(p[1]) for p in SEVEN_DAY_POINTS.values())
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/ecmwf"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&hourly=wet_bulb_temperature_2m&forecast_days=7&temperature_unit=fahrenheit&_cb={cache_buster}"
+    )
+    data = w._fetch_with_retries_bytes(url, "WetBulb:ecmwf")
+    if not data:
+        return None
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(points, list):
+        return None
+
+    # NWS WBGT, bucketed to a daily max per local Beaumont-time day,
+    # same pattern as fetch_ndfd_temps_by_day.
+    import datetime as _dt
+    now_local = _dt.datetime.now(w.BEAUMONT_TZ)
+    today_date = now_local.date()
+    wbgt_by_day = {}
+    for office_name, url2 in NDFD_OFFICES.items():
+        data2 = w._fetch_with_retries_bytes(url2, f"WBGT:{office_name}")
+        if not data2:
+            continue
+        try:
+            parsed2 = json.loads(data2.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        for entry in parsed2.get("properties", {}).get("wetBulbGlobeTemperature", {}).get("values", []):
+            val_c = entry.get("value")
+            valid_time = entry.get("validTime", "")
+            if val_c is None or "/" not in valid_time:
+                continue
+            try:
+                start_dt = _dt.datetime.fromisoformat(valid_time.split("/")[0]).astimezone(w.BEAUMONT_TZ)
+            except ValueError:
+                continue
+            day_offset = (start_dt.date() - today_date).days
+            if 0 <= day_offset <= 6:
+                wbgt_by_day.setdefault(day_offset, []).append(val_c * 9 / 5 + 32)
+    wbgt_max_by_day = {d: max(v) for d, v in wbgt_by_day.items()}
+
+    days = []
+    for day_idx in range(7):
+        vals = []
+        for point in points:
+            arr = point.get("hourly", {}).get("wet_bulb_temperature_2m", [])
+            start = day_idx * 24
+            end = start + 24
+            vals.extend(v for v in arr[start:end] if v is not None)
+        if not vals:
+            days.append(None)
+            continue
+        euro_max = max(vals)
+        wbgt_max = wbgt_max_by_day.get(day_idx)
+        if wbgt_max is not None:
+            blended = round(euro_max * (1 - WET_BULB_NWS_BLEND_WEIGHT) + wbgt_max * WET_BULB_NWS_BLEND_WEIGHT)
+        else:
+            blended = round(euro_max)
+        days.append(blended)
+    return days
+
+
+def build_wet_bulb_section(days):
+    if not days or not any(v is not None for v in days):
+        return None
+    lines = ["", "<b>\U0001F321️\U0001F4A7 7-Day Wet Bulb Forecast</b> (SETX -- Euro + NWS WBGT blend)"]
+    import datetime as _dt
+    now_local = _dt.datetime.now(w.BEAUMONT_TZ)
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    for i, val in enumerate(days):
+        d = now_local + _dt.timedelta(days=i)
+        wd = weekday_names[d.weekday()]
+        label = f"Today ({wd})" if i == 0 else wd
+        if val is None:
+            lines.append(f"{label}: data unavailable")
+        else:
+            lines.append(f"{label}: {val}F")
+    return lines
+
+
 def build_seven_day_section(days, ndfd_summary=None, ndfd_changed=True):
     if not days or not any(days):
         return None

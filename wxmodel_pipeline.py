@@ -1309,6 +1309,13 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
             lines.extend(seven_day_lines)
     except Exception as e:
         print(f"[Combined cycle] 7-day forecast section build failed (non-fatal): {e}")
+    try:
+        wet_bulb_days = _sx2.fetch_wet_bulb_by_day()
+        wet_bulb_lines = _sx2.build_wet_bulb_section(wet_bulb_days)
+        if wet_bulb_lines:
+            lines.extend(wet_bulb_lines)
+    except Exception as e:
+        print(f"[Combined cycle] Wet bulb forecast unavailable (non-fatal): {e}")
     if line_signal:
         note = _sx2.build_organized_line_note(line_signal)
         if note:
