@@ -430,7 +430,7 @@ def build_message(warn_key, office_key, text):
     office_name = OFFICES[office_key]
     issued = issued_time_from_header(text)
     body, tag_line, until_time = clean_body(text)
-    parts = [f"{emoji} <b>NWS {office_name} -- {label}</b>"]
+    parts = [f"{emoji} NWS {office_name} -- {label}"]
     if tag_line:
         parts.append(tag_line)
     if issued:

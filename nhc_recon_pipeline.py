@@ -320,7 +320,7 @@ def main():
         mission["lowest_pressure_when"] = fix_time["local"]
     state["mission"] = mission
 
-    header_lines = [f"✈️ <b>Recon Fix -- {fix_time['local']}</b>"]
+    header_lines = [f"✈️ Recon Fix -- {fix_time['local']}"]
     if aircraft:
         header_lines.append(f"Aircraft: {aircraft}")
     if location:

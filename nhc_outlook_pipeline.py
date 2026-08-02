@@ -236,7 +236,7 @@ def send_failure_alert(context, error):
 
 def build_message(text):
     issued = issued_time_from_header(text)
-    parts = ["🌎 <b>NHC 7-Day Tropical Weather Outlook</b>"]
+    parts = ["🌎 NHC 7-Day Tropical Weather Outlook"]
     if issued:
         parts.append(f"📅 Issued: {issued}")
     parts.append("")

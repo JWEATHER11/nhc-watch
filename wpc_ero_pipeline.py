@@ -204,7 +204,7 @@ def send_failure_alert(context, error):
 
 def build_message(days, block_text):
     day_str = "/".join(f"Day {d}" for d in days)
-    return f"🌊 <b>WPC Excessive Rainfall Outlook -- {day_str}</b>\n\n{block_text}"
+    return f"🌊 WPC Excessive Rainfall Outlook -- {day_str}\n\n{block_text}"
 
 
 def process_ero(state):

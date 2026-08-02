@@ -225,7 +225,7 @@ def build_message(office_key, text):
     cfg = OFFICES[office_key]
     issued = issued_time_from_header(text)
     body = clean_body(text)
-    parts = [f"📋 <b>{cfg['label']}</b>"]
+    parts = [f"📋 {cfg['label']}"]
     if issued:
         parts.append(f"📅 Issued: {issued}")
     parts.append("")

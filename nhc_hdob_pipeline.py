@@ -356,9 +356,9 @@ def main():
         return
 
     if signal_type == "strengthening":
-        header = "📈 <b>RECON SIGNAL: GETTING STRONGER</b>"
+        header = "📈 RECON SIGNAL: GETTING STRONGER"
     else:
-        header = "📉 <b>RECON SIGNAL: GETTING WEAKER</b>"
+        header = "📉 RECON SIGNAL: GETTING WEAKER"
 
     body_lines = [alert_reason]
     if storm_name or official_name:
