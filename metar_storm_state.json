@@ -1,3 +1,7 @@
 {
-  "active_hazards": {}
+  "active_hazards": {
+    "LFT": [
+      "thunderstorm"
+    ]
+  }
 }
