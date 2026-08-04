@@ -1,11 +1,51 @@
 {
   "last_alerted": {
     "coverage_pct": 0,
-    "max_total_in": 0.9,
-    "max_near": "Houston",
+    "max_total_in": 1.8,
+    "max_near": "Lake Charles",
+    "max_day_label": "tomorrow",
     "onset_hour_idx": null,
     "onset_hour_str": null,
-    "max_gust_mph": 53.0,
-    "max_gust_near": "Houston"
+    "max_gust_mph": 27.3,
+    "max_gust_near": "Houston",
+    "max_gust_hour_str": "2026-08-04T22:00:00-05:00",
+    "run_cycle_str": "2026-08-04T00:00:00+00:00",
+    "href": {
+      "cycle": "2026-08-03T18:00:00+00:00",
+      "day1": {
+        "Houston": 66,
+        "Beaumont": 43,
+        "Port Arthur": 60,
+        "Jasper": 0,
+        "Lake Charles": 50
+      },
+      "day2": {
+        "Houston": 88,
+        "Beaumont": 62,
+        "Port Arthur": 66,
+        "Jasper": 4,
+        "Lake Charles": 74
+      }
+    }
+  },
+  "href_cache": {
+    "fetched_at": "2026-08-04T02:17:35.395043+00:00",
+    "data": {
+      "cycle": "2026-08-03T18:00:00+00:00",
+      "day1": {
+        "Houston": 66,
+        "Beaumont": 43,
+        "Port Arthur": 60,
+        "Jasper": 0,
+        "Lake Charles": 50
+      },
+      "day2": {
+        "Houston": 88,
+        "Beaumont": 62,
+        "Port Arthur": 66,
+        "Jasper": 4,
+        "Lake Charles": 74
+      }
+    }
   }
 }
