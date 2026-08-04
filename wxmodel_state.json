@@ -2,6 +2,22 @@
   "quiet_announced_date": "2026-08-04",
   "trend_snapshots": [
     {
+      "short_rain_in": 0.2,
+      "medium_rain_in": 0.1,
+      "coverage_pct": 40,
+      "medium_coverage_pct": 20,
+      "long_coverage_pct": 100,
+      "temp_drop_f": 7.5,
+      "front_signal": false,
+      "short_temp_f": 93.4,
+      "medium_temp_f": 92.6,
+      "temp_5_7_f": 89.6,
+      "temp_7_10_f": 92.1,
+      "avg_dewpoint_f": 74.6,
+      "tropical_lowest_mb": 1007.7,
+      "tropical_wind_mph": 6
+    },
+    {
       "short_rain_in": 0.1,
       "medium_rain_in": 0.2,
       "coverage_pct": 20,
@@ -48,31 +64,15 @@
       "avg_dewpoint_f": 73.6,
       "tropical_lowest_mb": 1007.5,
       "tropical_wind_mph": 10
-    },
-    {
-      "short_rain_in": 0.1,
-      "medium_rain_in": 0.1,
-      "coverage_pct": 40,
-      "medium_coverage_pct": 40,
-      "long_coverage_pct": 80,
-      "temp_drop_f": 4.3,
-      "front_signal": false,
-      "short_temp_f": 94.9,
-      "medium_temp_f": 94.0,
-      "temp_5_7_f": 93.3,
-      "temp_7_10_f": 90.8,
-      "avg_dewpoint_f": 72.5,
-      "tropical_lowest_mb": 1007.5,
-      "tropical_wind_mph": 10
     }
   ],
-  "ndfd_send_day": "2026-08-03",
+  "ndfd_send_day": "2026-08-04",
   "ndfd_send_count": 0,
   "last_ndfd_totals": {
     "NWS Houston": 0.1,
-    "NWS Lake Charles": 0.1
+    "NWS Lake Charles": 0.4
   },
-  "last_combined_cycle": "2026-08-03T18",
+  "last_combined_cycle": "2026-08-04T00",
   "genesis_trend_history": [
     [
       "Caribbean Sea",
@@ -81,6 +81,11 @@
     ],
     [
       "Caribbean Sea",
+      "Off SE US Coast",
+      "Subtropical Atlantic"
+    ],
+    [
+      "Caribbean Sea",
       "Open Tropical Atlantic",
       "Subtropical Atlantic"
     ],
@@ -88,13 +93,8 @@
       "Caribbean Sea",
       "Off SE US Coast",
       "Open Tropical Atlantic",
-      "Subtropical Atlantic"
-    ],
-    [
-      "Caribbean Sea",
-      "Off SE US Coast",
       "Subtropical Atlantic"
     ]
   ],
-  "day5_prev_coverage_pct": 80
+  "day5_prev_coverage_pct": 100
 }
