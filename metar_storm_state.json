@@ -1,3 +1,10 @@
 {
-  "active_hazards": {}
+  "active_hazards": {
+    "CWF": [
+      "thunderstorm"
+    ],
+    "LCH": [
+      "thunderstorm"
+    ]
+  }
 }
