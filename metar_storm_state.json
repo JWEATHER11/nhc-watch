@@ -1,6 +1,15 @@
 {
   "active_hazards": {
+    "BPT": [
+      "thunderstorm"
+    ],
+    "BMT": [
+      "thunderstorm"
+    ],
     "CWF": [
+      "thunderstorm"
+    ],
+    "LCH": [
       "thunderstorm"
     ]
   }
