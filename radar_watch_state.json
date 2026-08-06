@@ -3,8 +3,8 @@
   "was_severe": false,
   "max_dbz_history": [
     15.0,
+    15.0,
     12.5,
-    16.0,
-    12.5
+    16.0
   ]
 }
