@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
 nws_afd_pipeline.py -- Tracks the local NWS Area Forecast Discussion (AFD)
-for Houston/Galveston (KHGX) and Lake Charles (KLCH). AFDs get re-issued
-several times a day with mostly-routine wording changes, so this caps
-delivery to one AM send and one PM/evening send per office per day --
-per instruction, sending on every single text diff was "the same stuff
-over and over again." A newly-appearing severe-weather keyword bypasses
-the cap and sends immediately regardless of how many times already sent
-today. Same reliable pattern as everything else otherwise: cache-busted
-fetch, full-text dedup, Telegram only, zero AI (this is the forecaster's
-own words, US government work, public domain).
+for Houston/Galveston (KHGX) and Lake Charles (KLCH). Per instruction,
+this no longer forwards the forecaster's full discussion text at all --
+it sends the AFD to Claude to check for anything actually impactful
+(fronts, storms, flooding, tropical/hurricane, severe weather), and only
+delivers a short plain-English summary when something impactful is
+present. Routine reissuances with nothing new to report send nothing.
+Cache-busted fetch, full-text dedup to avoid re-summarizing unchanged
+text, Telegram only.
 """
 
 import json
@@ -19,12 +18,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
-BEAUMONT_TZ = ZoneInfo("America/Chicago")
 
 OFFICES = {
     "hgx": {
@@ -76,11 +72,6 @@ def fetch_afd(office_key):
     if text:
         return text, "NWS"
     return None, "FAILED"
-
-
-def issued_time_from_header(text):
-    m = re.search(r"^\s*\d{3,4}\s+[AP]M\s+[A-Z]{2,4}\s+\w{3}\s+\w{3}\s+\d{1,2}\s+\d{4}\s*$", text, re.M)
-    return m.group(0).strip() if m else None
 
 
 # Sections we never want -- stripped out entirely before sending, per
@@ -221,35 +212,61 @@ def send_failure_alert(context, error):
         print(f"Could not even send the failure alert: {e}", file=sys.stderr)
 
 
-def build_message(office_key, text):
+def build_message(office_key, summary):
     cfg = OFFICES[office_key]
-    issued = issued_time_from_header(text)
-    body = clean_body(text)
-    parts = [f"📋 {cfg['label']}"]
-    if issued:
-        parts.append(f"📅 Issued: {issued}")
-    parts.append("")
-    parts.append(body)
+    parts = [f"📋 {cfg['label']} -- impact summary", "", summary]
     return "\n".join(parts).strip()
 
 
-AFD_SEVERE_KEYWORDS = [
-    "TORNADO", "SEVERE THUNDERSTORM", "FLASH FLOOD EMERGENCY", "FLASH FLOOD WARNING",
-    "PARTICULARLY DANGEROUS SITUATION", "EXCESSIVE HEAT WARNING", "HIGH WIND WARNING",
-    "HURRICANE WARNING", "TROPICAL STORM WARNING", "STORM SURGE WARNING",
-]
+AFD_SUMMARY_PROMPT = """You read National Weather Service Area Forecast Discussions (AFDs) for Houston/Galveston or Lake Charles and decide if there's anything worth telling a Beaumont, TX resident about.
+
+Only flag something if the discussion mentions:
+- A cold front (arriving, stalling, lifting back north)
+- Storms, especially organized or heavy rain potential
+- Flooding or flash flooding risk
+- Tropical or hurricane impacts
+- Severe weather (tornado, damaging wind, large hail)
+- Any other genuinely impactful weather (extreme heat, high wind, etc.)
+
+Routine forecast wording with no real impact (typical daily temps, ordinary rain chances, sea breeze, routine humidity discussion) does NOT count -- skip it.
+
+If NOTHING impactful is present, respond with exactly: NOTHING
+
+If something impactful IS present, write a short, plain-English summary (2-5 sentences, no meteorologist jargon) covering ONLY the impactful part -- not a recap of the whole discussion. Be direct about timing if the forecaster gives it."""
 
 
-def _is_big_change(new_text, old_text):
-    """A newly-appearing severe-weather keyword bypasses the AM/PM
-    send cap below, per instruction -- routine wording tweaks between
-    issuances should not, but a genuine new severe signal always
-    should, immediately, regardless of how many times already sent
-    today."""
-    if not old_text:
-        return True
-    new_upper, old_upper = new_text.upper(), old_text.upper()
-    return any(kw in new_upper and kw not in old_upper for kw in AFD_SEVERE_KEYWORDS)
+def call_claude_api(afd_text):
+    api_key = os.environ["ANTHROPIC_API_KEY"]
+    payload = json.dumps({
+        "model": "claude-sonnet-5",
+        "max_tokens": 300,
+        "system": AFD_SUMMARY_PROMPT,
+        "messages": [{"role": "user", "content": afd_text}],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
+        method="POST",
+    )
+    last_err = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text_blocks = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
+                result = "\n".join(text_blocks).strip()
+                if result:
+                    return result
+                last_err = "Empty response from Claude API"
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:200]}"
+        except Exception as e:
+            last_err = str(e)
+        print(f"[Claude API] Attempt {attempt} failed: {last_err}")
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_DELAY_SEC)
+    raise RuntimeError(f"Claude API failed after {MAX_ATTEMPTS} attempts: {last_err}")
 
 
 def process_office(office_key, state):
@@ -266,36 +283,29 @@ def process_office(office_key, state):
         print(f"[{office_key}] No change -- not sending.")
         return
 
-    now_local = datetime.now(BEAUMONT_TZ)
-    today_str = now_local.strftime("%Y-%m-%d")
-    big_change = _is_big_change(text, last_text)
+    body = clean_body(text)
+    try:
+        summary = call_claude_api(body)
+    except Exception as e:
+        send_failure_alert(f"{office_key} summarization", str(e))
+        return
 
-    if office_state.get("send_day") != today_str:
-        office_state["send_day"] = today_str
-        office_state["am_sent"] = False
+    office_state["last_text"] = text
+    state[office_key] = office_state
 
-    # Per instruction: only the early-AM update goes out routinely --
-    # NWS reissues these several times a day (overnight, morning,
-    # midday, evening), and getting all of them was too much. A newly-
-    # appearing severe-weather keyword still bypasses this, any time
-    # of day, since that's a real safety signal, not routine noise.
-    if not big_change:
-        if now_local.hour >= 12:
-            print(f"[{office_key}] Updated, but it's afternoon/evening and nothing severe -- not sending (AM-only per instruction).")
-            office_state["last_text"] = text
-            state[office_key] = office_state
-            save_state(state)
-            return
-        if office_state.get("am_sent"):
-            print(f"[{office_key}] Updated, but today's AM update already sent and nothing severe -- not resending.")
-            office_state["last_text"] = text
-            state[office_key] = office_state
-            save_state(state)
-            return
+    if summary.strip().upper() == "NOTHING":
+        print(f"[{office_key}] Updated, but nothing impactful -- not sending.")
+        save_state(state)
+        return
 
-    print(f"[{office_key}] Sending -- {'severe keyword newly appeared' if big_change else 'early-AM update'}.")
-    message = build_message(office_key, text)
-    print(f"[{office_key}] Message:\n{message[:500]}...")
+    if summary.strip() == office_state.get("last_sent_summary"):
+        print(f"[{office_key}] Updated, but the impactful content is unchanged from what was already sent -- not resending.")
+        save_state(state)
+        return
+
+    print(f"[{office_key}] Sending impact summary.")
+    message = build_message(office_key, summary)
+    print(f"[{office_key}] Message:\n{message}")
 
     try:
         deliver(message, subject=cfg["label"])
@@ -304,8 +314,7 @@ def process_office(office_key, state):
         return
 
     print(f"[{office_key}] Sent successfully.")
-    office_state["last_text"] = text
-    office_state["am_sent"] = True
+    office_state["last_sent_summary"] = summary.strip()
     state[office_key] = office_state
     save_state(state)
 
