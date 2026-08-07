@@ -24,7 +24,6 @@ work, kept separate from the model-based WXMODEL chat.
 """
 
 import json
-import math
 import os
 import sys
 import time
@@ -75,67 +74,13 @@ HEAVY_RAIN_HOURLY_IN = 0.5
 
 KT_TO_MPH = 1.15078
 
-# Second, much denser layer: local flood-control rain gauges (Jefferson
-# County Drainage District, Harris County Flood Control District,
-# etc.), all aggregated for free through the same IEM feed as a single
-# "TX_DCP" network -- per instruction to get much heavier station
-# density across SETX (Beaumont/Port Arthur/Orange/Winnie/Jasper) and
-# near Houston. These only report rainfall (no wind or present-weather
-# sensors), so they only ever contribute the heavy_rain hazard below.
-# Verified live via IEM (mesonet.agron.iastate.edu/geojson/network/
-# TX_DCP.geojson) before adding -- 521 stations matched, 437 actively
-# reporting -- not guessed. Fetched and filtered once per process
-# lifetime (cached below) rather than every 25s cycle, since the
-# station list doesn't change often.
-RAINGAUGE_NETWORK_URL = "https://mesonet.agron.iastate.edu/geojson/network/TX_DCP.geojson"
-RAINGAUGE_COUNTIES = {
-    "Harris", "Jefferson", "Orange", "Chambers", "Jasper", "Hardin",
-    "Newton", "Tyler", "Liberty", "Montgomery", "Galveston",
-}
-RAINGAUGE_CENTER_LAT, RAINGAUGE_CENTER_LON = 30.086, -94.207  # Beaumont
-RAINGAUGE_RADIUS_MI = 90
-
-_raingauge_cache = None
-
-
-def _haversine_mi(lat1, lon1, lat2, lon2):
-    r = 3958.8
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlambda / 2) ** 2
-    return 2 * r * math.asin(math.sqrt(a))
-
-
-def get_raingauge_stations():
-    """Fetches and filters the TX_DCP network down to SETX/Houston-area
-    flood-control rain gauges, cached for the life of the process --
-    non-fatal on failure, just means this cycle runs with ASOS-only
-    coverage. Returns {station_id: station_name}."""
-    global _raingauge_cache
-    if _raingauge_cache is not None:
-        return _raingauge_cache
-    data = _fetch_with_retries_bytes(RAINGAUGE_NETWORK_URL, "METARStorm:raingauge_network")
-    if not data:
-        return {}
-    try:
-        parsed = json.loads(data.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return {}
-    stations = {}
-    for feat in parsed.get("features", []):
-        props = feat.get("properties", {})
-        if props.get("county") not in RAINGAUGE_COUNTIES:
-            continue
-        lon, lat = feat["geometry"]["coordinates"]
-        if _haversine_mi(RAINGAUGE_CENTER_LAT, RAINGAUGE_CENTER_LON, lat, lon) > RAINGAUGE_RADIUS_MI:
-            continue
-        sid = props.get("sid") or props.get("id")
-        if sid:
-            stations[sid] = props.get("sname") or sid
-    _raingauge_cache = stations
-    print(f"[raingauge] Loaded {len(stations)} SETX/Houston-area flood-control rain gauges.")
-    return stations
+# A TX_DCP (creek/bayou/gully stream-gauge) layer was tried here and
+# reverted -- per instruction. Those stations' "phour" field does not
+# mean hourly rainfall the way it does for ASOS (values like 30-40+
+# inches/hour came through, which is physically impossible for rain
+# and was actually stream-stage/flow data mismapped onto the same
+# field name). Real weather-observation station data only -- ASOS/AWOS
+# below, nothing hydrological.
 
 
 def _http_get_bytes(url, timeout=10):
@@ -159,12 +104,11 @@ def _fetch_with_retries_bytes(url, label):
 
 
 def fetch_corridor_conditions():
-    """Live, observed (not forecast) current conditions across the
-    ASOS corridor (full met data: wind/wxcodes/rain) plus the SETX/
-    Houston flood-control rain gauge network (rain-only), via IEM's
-    currents.json in one combined request."""
-    all_stations = list(CORRIDOR_STATIONS.keys()) + list(get_raingauge_stations().keys())
-    stations = ",".join(all_stations)
+    """Live, observed (not forecast) current conditions at the
+    corridor's ASOS stations, via IEM's currents.json -- confirmed
+    live this covers all target stations directly by station code,
+    no need to fetch a whole state network."""
+    stations = ",".join(CORRIDOR_STATIONS.keys())
     url = f"https://mesonet.agron.iastate.edu/api/1/currents.json?station={stations}"
     data = _fetch_with_retries_bytes(url, "METARStorm:currents")
     if not data:
@@ -219,7 +163,7 @@ def build_message(new_hazards_by_station):
         "",
     ]
     for station, hazards in new_hazards_by_station.items():
-        name = CORRIDOR_STATIONS.get(station) or get_raingauge_stations().get(station, station)
+        name = CORRIDOR_STATIONS.get(station, station)
         lines.append(f"<b>{name} ({station})</b>")
         for hazard_key, desc in hazards.items():
             lines.append(f"{HAZARD_EMOJI.get(hazard_key, '⚠️')} {desc}")
@@ -235,28 +179,21 @@ def send_telegram(text):
     bot_token = os.environ["NWS_TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["NWS_TELEGRAM_CHAT_ID"]
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    # Telegram caps a single message at 4096 chars -- with hundreds of
-    # rain gauges now in play, a widespread event could list enough
-    # stations to exceed that, so chunk rather than let the send fail.
-    max_len = 4000
-    chunks = [text[i:i + max_len] for i in range(0, len(text), max_len)] or [text]
-    for chunk in chunks:
-        payload = json.dumps({"chat_id": chat_id, "text": chunk, "parse_mode": "HTML"}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        last_err = None
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            try:
-                with urllib.request.urlopen(req, timeout=20) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                    if result.get("ok"):
-                        break
-                    last_err = result.get("description", "Unknown Telegram error")
-            except Exception as e:
-                last_err = str(e)
-            if attempt < MAX_ATTEMPTS:
-                time.sleep(RETRY_DELAY_SEC)
-        else:
-            raise RuntimeError(f"Telegram send failed after {MAX_ATTEMPTS} attempts: {last_err}")
+    payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    last_err = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                if result.get("ok"):
+                    return
+                last_err = result.get("description", "Unknown Telegram error")
+        except Exception as e:
+            last_err = str(e)
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_DELAY_SEC)
+    raise RuntimeError(f"Telegram send failed after {MAX_ATTEMPTS} attempts: {last_err}")
 
 
 def deliver(text):
