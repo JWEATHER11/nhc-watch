@@ -1,6 +1,12 @@
 {
   "active_hazards": {
+    "JAS": [
+      "thunderstorm"
+    ],
     "ORG": [
+      "thunderstorm"
+    ],
+    "DRI": [
       "thunderstorm"
     ],
     "LFT": [
