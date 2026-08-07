@@ -1,3 +1,43 @@
 {
-  "active_hazards": {}
+  "active_hazards": {
+    "BGYT2": [
+      "heavy_rain"
+    ],
+    "GMBT2": [
+      "heavy_rain"
+    ],
+    "LDTT2": [
+      "heavy_rain"
+    ],
+    "PTKT2": [
+      "heavy_rain"
+    ],
+    "CGFT2": [
+      "heavy_rain"
+    ],
+    "WWYT2": [
+      "heavy_rain"
+    ],
+    "NEYT2": [
+      "heavy_rain"
+    ],
+    "SERT2": [
+      "heavy_rain"
+    ],
+    "PCFT2": [
+      "heavy_rain"
+    ],
+    "BWIT2": [
+      "heavy_rain"
+    ],
+    "CCUT2": [
+      "heavy_rain"
+    ],
+    "CCXT2": [
+      "heavy_rain"
+    ],
+    "PECT2": [
+      "heavy_rain"
+    ]
+  }
 }
