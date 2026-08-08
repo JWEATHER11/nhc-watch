@@ -1,5 +1,8 @@
 {
   "active_hazards": {
+    "HOU": [
+      "thunderstorm"
+    ],
     "3R7": [
       "thunderstorm"
     ],
@@ -31,6 +34,9 @@
       "heavy_rain"
     ],
     "Barbers Hill ISD": [
+      "heavy_rain"
+    ],
+    "Mauriceville-1 mile north": [
       "heavy_rain"
     ]
   }
