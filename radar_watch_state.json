@@ -1,14 +1,15 @@
 {
   "active_storm_cities": [
+    "Beaumont/Port Arthur",
     "Houston",
     "Jasper",
     "Lake Charles"
   ],
   "was_severe": false,
   "max_dbz_history": [
+    44.0,
     48.0,
     53.5,
-    49.0,
-    48.0
+    49.0
   ]
 }
