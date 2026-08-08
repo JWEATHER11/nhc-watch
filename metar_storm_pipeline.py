@@ -668,12 +668,17 @@ def process_metar_storm(state):
         print("ASOS corridor conditions unavailable this cycle (non-fatal).")
         asos_obs = []
 
-    try:
-        dcp_obs = fetch_dcp_precip_obs()
-    except Exception as e:
-        print(f"DCP rain gauge fetch failed this cycle (non-fatal): {e}")
-        dcp_obs = []
-    print(f"[DCP] {len(dcp_obs)}/{len(DCP_CORRIDOR_STATIONS)} rain gauges reported this cycle.")
+    # DCP rain-gauge layer DISABLED per instruction, 2026-08-07 -- during
+    # a real rain event it sent "30-40+ inches in the last hour" alerts
+    # across ~40 stations simultaneously (physically impossible; world
+    # record is ~12in/hr). The dry-weather-only sample used to vet
+    # DCP_PRECIP_VARS wasn't enough to catch this -- at least one of
+    # those "period" SHEF codes behaves like an accumulator (or resets
+    # on an irregular/event basis, not a fixed hourly window) under
+    # real rain, the same failure mode PCIRGZZ already showed. Left in
+    # place but not called, pending a proper fix validated against an
+    # actual rain event before ever re-enabling.
+    dcp_obs = []
 
     obs = asos_obs + dcp_obs
     if not obs:
