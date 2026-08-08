@@ -1,8 +1,5 @@
 {
   "active_hazards": {
-    "3R7": [
-      "thunderstorm"
-    ],
     "BPT": [
       "thunderstorm"
     ],
@@ -10,6 +7,9 @@
       "thunderstorm"
     ],
     "ORG": [
+      "thunderstorm"
+    ],
+    "GLS": [
       "thunderstorm"
     ],
     "Port Acres ES": [
