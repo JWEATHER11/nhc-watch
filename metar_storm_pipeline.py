@@ -694,6 +694,7 @@ KFDM_PLACEMARK_RE = re.compile(r"<Placemark>(.*?)</Placemark>", re.S)
 KFDM_NAME_RE = re.compile(r"<name>([^<]+)</name>")
 KFDM_RAIN_RE = re.compile(r"Rainfall:\s*([\-0-9.]+)")
 KFDM_WIND_RE = re.compile(r"Wind:\s*([0-9.]+)")
+KFDM_TIME_RE = re.compile(r"<B>([\d/]+\s+[\d:]+\s*[AP]M\[[A-Za-z]+\])</B>")
 
 
 def fetch_kfdm_obs():
@@ -745,7 +746,12 @@ def fetch_kfdm_obs():
             except ValueError:
                 pass
 
-        obs.append({"station": name, "wxcodes": "", "gust": None, "wind_mph": wind_mph, "rain_today": rain_today})
+        obs_time = None
+        time_m = KFDM_TIME_RE.search(block)
+        if time_m:
+            obs_time = time_m.group(1).strip()
+
+        obs.append({"station": name, "wxcodes": "", "gust": None, "wind_mph": wind_mph, "rain_today": rain_today, "obs_time": obs_time})
 
     return obs
 
@@ -773,9 +779,12 @@ def classify_hazards(ob):
         if gust_mph >= GUST_THRESHOLD_MPH:
             hazards["gust"] = f"Wind gust to {round(gust_mph)} mph observed"
 
+    obs_time = ob.get("obs_time")
+    time_suffix = f" (as of {obs_time})" if obs_time else ""
+
     wind_mph = ob.get("wind_mph")
     if wind_mph is not None and wind_mph >= GUST_THRESHOLD_MPH:
-        hazards["gust"] = f"High wind -- {round(wind_mph)} mph observed"
+        hazards["gust"] = f"High wind -- {round(wind_mph)} mph observed{time_suffix}"
 
     phour = ob.get("phour")
     if phour is not None and phour >= HEAVY_RAIN_HOURLY_IN:
@@ -801,7 +810,7 @@ def classify_hazards(ob):
         else:
             for tier in RAIN_TODAY_TIERS:
                 if rain_today >= tier:
-                    hazards[f"rain_today_{tier}"] = f"Rain total climbing -- now {rain_today}\""
+                    hazards[f"rain_today_{tier}"] = f"Rain total climbing -- now {rain_today}\"{time_suffix}"
 
     return hazards
 
