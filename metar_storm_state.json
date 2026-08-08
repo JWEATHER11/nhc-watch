@@ -3,7 +3,10 @@
     "HOU": [
       "thunderstorm"
     ],
-    "BMT": [
+    "BPT": [
+      "thunderstorm"
+    ],
+    "JAS": [
       "thunderstorm"
     ],
     "LVJ": [
@@ -40,6 +43,9 @@
       "heavy_rain"
     ],
     "Mauriceville-1 mile north": [
+      "heavy_rain"
+    ],
+    "Kirbyville VFD": [
       "heavy_rain"
     ]
   }
