@@ -555,6 +555,16 @@ KFDM_KML_URL = "http://dc3.weatheractive.org/KFDM/KML/DATA/temperature.kml"
 # and is silently dropped rather than alerted on.
 PHOUR_SANITY_MAX_IN = 6.0
 
+# Same principle, sized for a running DAILY total instead of an hourly
+# rate (KFDM's "Rainfall" field -- see fetch_kfdm_obs()). Historic
+# single-day extremes in this region during major hurricanes have
+# approached this range; anything beyond it is a data artifact.
+RAIN_TODAY_SANITY_MAX_IN = 30.0
+
+# Per instruction: alert when today's running total crosses 0.5in, and
+# again -- separately -- when it crosses 1.5in.
+RAIN_TODAY_TIERS = [0.5, 1.5]
+
 GUST_THRESHOLD_MPH = 40  # per instruction: alert on any gust/high-wind reading over 40mph
 HEAVY_RAIN_HOURLY_IN = 0.5
 
@@ -700,13 +710,22 @@ def fetch_kfdm_obs():
         if name not in KFDM_WEATHERNET_STATIONS:
             continue  # skip the map-legend placemarks (Station Logo, Caption)
 
-        phour = None
+        # KFDM's "Rainfall" field is the running total since local
+        # midnight, NOT an hourly rate -- confirmed against a station's
+        # own detail page, which lists it separately from "Rainfall
+        # Rate (in/hr)" (a field this feed doesn't expose). Deliberately
+        # NOT put in "phour" -- that field means "in the last hour"
+        # elsewhere in this file, and mixing the two meanings under one
+        # key is exactly the kind of ambiguity that caused the DCP
+        # incident. Kept as its own "rain_today" field with its own
+        # tiered classify_hazards() handling instead.
+        rain_today = None
         rain_m = KFDM_RAIN_RE.search(block)
         if rain_m:
             try:
                 v = float(rain_m.group(1))
                 if v >= 0:
-                    phour = v
+                    rain_today = v
             except ValueError:
                 pass
 
@@ -718,7 +737,7 @@ def fetch_kfdm_obs():
             except ValueError:
                 pass
 
-        obs.append({"station": name, "wxcodes": "", "gust": None, "wind_mph": wind_mph, "phour": phour})
+        obs.append({"station": name, "wxcodes": "", "gust": None, "wind_mph": wind_mph, "rain_today": rain_today})
 
     return obs
 
@@ -760,6 +779,22 @@ def classify_hazards(ob):
         else:
             hazards["heavy_rain"] = f"Heavy rain observed -- {phour}\" in the last hour"
 
+    # KFDM's running-total-since-midnight field, per instruction: alert
+    # when it crosses 0.5in, and again -- separately, not suppressed by
+    # the first alert -- when it crosses 1.5in. A single hazard key
+    # would only fire once at 0.5in and then go silent for the rest of
+    # the day since the total never drops back down; one key PER TIER
+    # lets each threshold announce itself independently the first time
+    # it's crossed.
+    rain_today = ob.get("rain_today")
+    if rain_today is not None:
+        if rain_today > RAIN_TODAY_SANITY_MAX_IN:
+            print(f"[sanity check] Discarding implausible rain_today={rain_today}in at this station -- data artifact, not real rain, not alerting.")
+        else:
+            for tier in RAIN_TODAY_TIERS:
+                if rain_today >= tier:
+                    hazards[f"rain_today_{tier}"] = f"{rain_today}\" of rain so far today (past {tier}\")"
+
     return hazards
 
 
@@ -769,6 +804,8 @@ HAZARD_EMOJI = {
     "hail": "🧊",
     "gust": "💨",
     "heavy_rain": "💧",
+    "rain_today_0.5": "💧",
+    "rain_today_1.5": "🌊",  # heavier marker for the escalated tier
 }
 
 
@@ -780,8 +817,11 @@ def build_message(new_hazards_by_station):
         "",
     ]
     for station, hazards in new_hazards_by_station.items():
-        name = CORRIDOR_STATIONS.get(station) or DCP_CORRIDOR_STATIONS.get(station) or KFDM_WEATHERNET_STATIONS.get(station, station)
-        lines.append(f"<b>{name} ({station})</b>")
+        name = CORRIDOR_STATIONS.get(station) or DCP_CORRIDOR_STATIONS.get(station)
+        # KFDM stations have no separate short code -- name and station
+        # key are the same string, so skip the redundant "(X (X))".
+        header = f"{name} ({station})" if name else station
+        lines.append(f"<b>{header}</b>")
         for hazard_key, desc in hazards.items():
             lines.append(f"{HAZARD_EMOJI.get(hazard_key, '⚠️')} {desc}")
         lines.append("")
