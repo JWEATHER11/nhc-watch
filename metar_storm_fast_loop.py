@@ -15,10 +15,11 @@ pipelines already use (nhc_fast_loop.py etc.) fixes this the same way
 it works for them: once a slot is won, this job just keeps it instead
 of re-competing for a new one every cycle.
 
-Checks every 10 minutes internally (matching the original cron cadence
--- METAR obs don't update meaningfully faster than that), for just
-under GitHub's 6-hour job cap, then triggers a fresh run of itself via
-the GitHub API right before it would be killed.
+Checks every 5 minutes internally -- per instruction, faster than the
+original 10-minute cadence, tightened once the KFDM WeatherNet layer
+was added (that source updates faster than ASOS/METAR obs do). For
+just under GitHub's 6-hour job cap, then triggers a fresh run of
+itself via the GitHub API right before it would be killed.
 """
 
 import json
@@ -31,7 +32,7 @@ import urllib.request
 
 import metar_storm_pipeline
 
-POLL_INTERVAL_SEC = 600  # 10 minutes, matches the original cron cadence
+POLL_INTERVAL_SEC = 300  # 5 minutes -- per instruction, "the faster the better"
 MAX_RUNTIME_SEC = 5.75 * 3600  # 5h45m -- leaves a buffer before GitHub's 6h hard cap
 START_TIME = time.time()
 

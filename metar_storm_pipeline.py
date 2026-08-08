@@ -561,9 +561,13 @@ PHOUR_SANITY_MAX_IN = 6.0
 # approached this range; anything beyond it is a data artifact.
 RAIN_TODAY_SANITY_MAX_IN = 30.0
 
-# Per instruction: alert when today's running total crosses 0.5in, and
-# again -- separately -- when it crosses 1.5in.
-RAIN_TODAY_TIERS = [0.5, 1.5]
+# Per instruction: one heads-up at 0.5in, not repeated below 1in --
+# then a fresh alert at every additional inch as a real event keeps
+# climbing (1, 2, 3, 4, 5in and beyond), so an ongoing significant
+# event keeps getting updates instead of going silent after the first
+# one. Each tier is its own hazard key, so classify_hazards() only
+# ever alerts once per tier, same mechanism as before.
+RAIN_TODAY_TIERS = [0.5] + [float(i) for i in range(1, int(RAIN_TODAY_SANITY_MAX_IN))]
 
 GUST_THRESHOLD_MPH = 40  # per instruction: alert on any gust/high-wind reading over 40mph
 HEAVY_RAIN_HOURLY_IN = 0.5
@@ -804,9 +808,17 @@ HAZARD_EMOJI = {
     "hail": "🧊",
     "gust": "💨",
     "heavy_rain": "💧",
-    "rain_today_0.5": "💧",
-    "rain_today_1.5": "🌊",  # heavier marker for the escalated tier
 }
+
+
+def hazard_emoji(hazard_key):
+    """HAZARD_EMOJI covers the fixed hazard types; rain_today_X has one
+    key per tier (0.5, 1.0, 2.0, ... -- see RAIN_TODAY_TIERS), so it's
+    handled by magnitude here instead of one dict entry per tier."""
+    if hazard_key.startswith("rain_today_"):
+        tier = float(hazard_key.removeprefix("rain_today_"))
+        return "🌊" if tier >= 3.0 else "💧"
+    return HAZARD_EMOJI.get(hazard_key, "⚠️")
 
 
 def build_message(new_hazards_by_station):
@@ -823,7 +835,7 @@ def build_message(new_hazards_by_station):
         header = f"{name} ({station})" if name else station
         lines.append(f"<b>{header}</b>")
         for hazard_key, desc in hazards.items():
-            lines.append(f"{HAZARD_EMOJI.get(hazard_key, '⚠️')} {desc}")
+            lines.append(f"{hazard_emoji(hazard_key)} {desc}")
         lines.append("")
     return "\n".join(lines).rstrip()
 
