@@ -29,6 +29,7 @@ import csv
 import io
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -439,7 +440,122 @@ DCP_CORRIDOR_STATIONS = {
 DCP_PRECIP_VARS = ["PPHRRZZ", "PPERRZZ", "PPHRGZZ", "PPURRZZ"]
 DCP_CHUNK_SIZE = 90  # verified: larger chunks risk CGI URL-length limits
 
-GUST_THRESHOLD_KT = 40  # ~46 mph -- a real, useful heads-up level, below the official 50kt severe criterion
+# KFDM WeatherNet -- a genuine standalone local weather-station network
+# (schools, fire departments, ranches; not flood/drainage infrastructure),
+# per instruction to prefer non-creek/river station sources. Free, no
+# signup, no API key -- confirmed live via the station's own public KML
+# feed (dc3.weatheractive.org), which returns already-computed values
+# (Temperature/Humidity/Dewpoint/Wind/Pressure/Rainfall), not raw codes
+# needing interpretation. 93 stations verified live across the corridor
+# (Beaumont, Port Arthur, Orange, Winnie, Jasper, Silsbee, Lumberton,
+# Vidor, Nederland, Groves, Sabine Pass, Kountze, Woodville, and more).
+KFDM_WEATHERNET_STATIONS = {
+    "Baptist Hospital": "Baptist Hospital",
+    "Bayou Din": "Bayou Din",
+    "Jefferson Energy": "Jefferson Energy",
+    "LCM HS": "LCM HS",
+    "Bridge City": "Bridge City",
+    "Buna": "Buna",
+    "China": "China",
+    "County Home": "County Home",
+    "Winnie": "Winnie",
+    "Evadale": "Evadale",
+    "Port Acres ES": "Port Acres ES",
+    "Doucette": "Doucette",
+    "Fred": "Fred",
+    "Fannett": "Fannett",
+    "High Island": "High Island",
+    "Hillcrest": "Hillcrest",
+    "Idylwild": "Idylwild",
+    "Jasper": "Jasper",
+    "Chester": "Chester",
+    "Kountze": "Kountze",
+    "Silsbee": "Silsbee",
+    "Babe Zaharias": "Babe Zaharias",
+    "Lumberton M.S.": "Lumberton M.S.",
+    "Newton": "Newton",
+    "Nome": "Nome",
+    "Pinehurst": "Pinehurst",
+    "Port Of PA": "Port Of PA",
+    "Dominion Ranch": "Dominion Ranch",
+    "Roy Guess": "Roy Guess",
+    "Sabine Pass": "Sabine Pass",
+    "Shangri La": "Shangri La",
+    "Sour Lake": "Sour Lake",
+    "The Big Store": "The Big Store",
+    "Vidor": "Vidor",
+    "Warren": "Warren",
+    "Saratoga": "Saratoga",
+    "Wildwood": "Wildwood",
+    "Woodville": "Woodville",
+    "Ford Park": "Ford Park",
+    "Sea Rim": "Sea Rim",
+    "Gilbert Adams": "Gilbert Adams",
+    "Port Neches": "Port Neches",
+    "Mauriceville": "Mauriceville",
+    "Port Bolivar": "Port Bolivar",
+    "Sam Houston": "Sam Houston",
+    "Colmesneil": "Colmesneil",
+    "Gentz Ranch": "Gentz Ranch",
+    "Southern Nursery": "Southern Nursery",
+    "Spurger": "Spurger",
+    "Devers": "Devers",
+    "Tyrell Park": "Tyrell Park",
+    "Diamond D Ranch": "Diamond D Ranch",
+    "Deweyville HS": "Deweyville HS",
+    "Beech Grove VFD": "Beech Grove VFD",
+    "Vincent MS": "Vincent MS",
+    "Sallie Curtis ES": "Sallie Curtis ES",
+    "Orangefield ISD": "Orangefield ISD",
+    "Brookeland ISD": "Brookeland ISD",
+    "All Saints Episcopal School": "All Saints Episcopal School",
+    "Pietzsch-MacArthur School": "Pietzsch-MacArthur School",
+    "Rayburn Realty": "Rayburn Realty",
+    "Magnolia Springs": "Magnolia Springs",
+    "Groves Fire Dept": "Groves Fire Dept",
+    "Nederland Fire Dept": "Nederland Fire Dept",
+    "Burkeville VFD": "Burkeville VFD",
+    "Beaumont Country Club": "Beaumont Country Club",
+    "Rocking Y Ranch": "Rocking Y Ranch",
+    "C.O. Wilson Middle School": "C.O. Wilson Middle School",
+    "Gator Country": "Gator Country",
+    "Barbers Hill ISD": "Barbers Hill ISD",
+    "West Orange Police Dept": "West Orange Police Dept",
+    "Sabine River Authority": "Sabine River Authority",
+    "Bevil Oaks": "Bevil Oaks",
+    "Hamshire-Fannett HS": "Hamshire-Fannett HS",
+    "Trout Creek VFD": "Trout Creek VFD",
+    "Votaw-Thicket VFD": "Votaw-Thicket VFD",
+    "Gulf Coast Bug Zappers": "Gulf Coast Bug Zappers",
+    "Roganville VFD": "Roganville VFD",
+    "Naskila Casino": "Naskila Casino",
+    "Utopia Ranch": "Utopia Ranch",
+    "Ivanhoe City Hall": "Ivanhoe City Hall",
+    "Crystal Beach": "Crystal Beach",
+    "Mauriceville-1 mile north": "Mauriceville-1 mile north",
+    "Lakeview-3 miles east": "Lakeview-3 miles east",
+    "Holly Beach": "Holly Beach",
+    "R.C.Services": "R.C.Services",
+    "Lamar Inst of Technology": "Lamar Inst of Technology",
+    "Tolbert Ranch": "Tolbert Ranch",
+    "Arceneaux Ranch": "Arceneaux Ranch",
+    "Hardin County ESD#6": "Hardin County ESD#6",
+    "Spindletop Boomtown": "Spindletop Boomtown",
+    "Dam B VFD": "Dam B VFD",
+    "Kirbyville VFD": "Kirbyville VFD",
+}
+KFDM_KML_URL = "http://dc3.weatheractive.org/KFDM/KML/DATA/temperature.kml"
+
+# Hard physical sanity ceiling applied to EVERY heavy-rain hazard check,
+# regardless of source -- per instruction, after the DCP layer's SHEF
+# accumulator field alerted "30-40+ inches in the last hour" (physically
+# impossible; the actual world record is ~12in/hr). This alone would
+# have completely blocked that incident. Any single-station reading
+# above this is treated as a data/parsing artifact, not real weather,
+# and is silently dropped rather than alerted on.
+PHOUR_SANITY_MAX_IN = 6.0
+
+GUST_THRESHOLD_MPH = 40  # per instruction: alert on any gust/high-wind reading over 40mph
 HEAVY_RAIN_HOURLY_IN = 0.5
 
 KT_TO_MPH = 1.15078
@@ -556,6 +672,57 @@ def fetch_dcp_precip_obs():
     ]
 
 
+KFDM_PLACEMARK_RE = re.compile(r"<Placemark>(.*?)</Placemark>", re.S)
+KFDM_NAME_RE = re.compile(r"<name>([^<]+)</name>")
+KFDM_RAIN_RE = re.compile(r"Rainfall:\s*([\-0-9.]+)")
+KFDM_WIND_RE = re.compile(r"Wind:\s*([0-9.]+)")
+
+
+def fetch_kfdm_obs():
+    """Live conditions from the KFDM WeatherNet station network --
+    already-computed values (not raw codes needing interpretation), per
+    the KML feed's own description text. Non-fatal on failure, matching
+    every other observation source here."""
+    data = _fetch_with_retries_bytes(KFDM_KML_URL, "KFDM:kml")
+    if not data:
+        return []
+    try:
+        text = data.decode("latin-1")
+    except UnicodeDecodeError:
+        text = data.decode("utf-8", errors="replace")
+
+    obs = []
+    for block in KFDM_PLACEMARK_RE.findall(text):
+        name_m = KFDM_NAME_RE.search(block)
+        if not name_m:
+            continue
+        name = name_m.group(1).strip()
+        if name not in KFDM_WEATHERNET_STATIONS:
+            continue  # skip the map-legend placemarks (Station Logo, Caption)
+
+        phour = None
+        rain_m = KFDM_RAIN_RE.search(block)
+        if rain_m:
+            try:
+                v = float(rain_m.group(1))
+                if v >= 0:
+                    phour = v
+            except ValueError:
+                pass
+
+        wind_mph = None
+        wind_m = KFDM_WIND_RE.search(block)
+        if wind_m:
+            try:
+                wind_mph = float(wind_m.group(1))
+            except ValueError:
+                pass
+
+        obs.append({"station": name, "wxcodes": "", "gust": None, "wind_mph": wind_mph, "phour": phour})
+
+    return obs
+
+
 def classify_hazards(ob):
     """Returns a dict of {hazard_key: description} for whatever real,
     observed hazards this specific station report shows right now.
@@ -570,14 +737,28 @@ def classify_hazards(ob):
     if "GR" in wxcodes:
         hazards["hail"] = "Hail reported"
 
-    gust = ob.get("gust")
-    if gust is not None and gust >= GUST_THRESHOLD_KT:
-        mph = round(gust * KT_TO_MPH)
-        hazards["gust"] = f"Wind gust to {mph} mph observed"
+    # ASOS gust arrives in knots; KFDM wind arrives already in mph --
+    # both compared against the same mph threshold per instruction
+    # ("any gusts over 40mph"), converting only where needed.
+    gust_kt = ob.get("gust")
+    if gust_kt is not None:
+        gust_mph = gust_kt * KT_TO_MPH
+        if gust_mph >= GUST_THRESHOLD_MPH:
+            hazards["gust"] = f"Wind gust to {round(gust_mph)} mph observed"
+
+    wind_mph = ob.get("wind_mph")
+    if wind_mph is not None and wind_mph >= GUST_THRESHOLD_MPH:
+        hazards["gust"] = f"High wind -- {round(wind_mph)} mph observed"
 
     phour = ob.get("phour")
     if phour is not None and phour >= HEAVY_RAIN_HOURLY_IN:
-        hazards["heavy_rain"] = f"Heavy rain observed -- {phour}\" in the last hour"
+        # Hard sanity ceiling, applied regardless of source -- see
+        # PHOUR_SANITY_MAX_IN comment. This is what the DCP incident
+        # needed and didn't have.
+        if phour > PHOUR_SANITY_MAX_IN:
+            print(f"[sanity check] Discarding implausible phour={phour}in at this station -- data artifact, not real rain, not alerting.")
+        else:
+            hazards["heavy_rain"] = f"Heavy rain observed -- {phour}\" in the last hour"
 
     return hazards
 
@@ -599,7 +780,7 @@ def build_message(new_hazards_by_station):
         "",
     ]
     for station, hazards in new_hazards_by_station.items():
-        name = CORRIDOR_STATIONS.get(station) or DCP_CORRIDOR_STATIONS.get(station, station)
+        name = CORRIDOR_STATIONS.get(station) or DCP_CORRIDOR_STATIONS.get(station) or KFDM_WEATHERNET_STATIONS.get(station, station)
         lines.append(f"<b>{name} ({station})</b>")
         for hazard_key, desc in hazards.items():
             lines.append(f"{HAZARD_EMOJI.get(hazard_key, '⚠️')} {desc}")
@@ -680,7 +861,14 @@ def process_metar_storm(state):
     # actual rain event before ever re-enabling.
     dcp_obs = []
 
-    obs = asos_obs + dcp_obs
+    try:
+        kfdm_obs = fetch_kfdm_obs()
+    except Exception as e:
+        print(f"KFDM WeatherNet fetch failed this cycle (non-fatal): {e}")
+        kfdm_obs = []
+    print(f"[KFDM] {len(kfdm_obs)}/{len(KFDM_WEATHERNET_STATIONS)} stations reported this cycle.")
+
+    obs = asos_obs + dcp_obs + kfdm_obs
     if not obs:
         print("No observations from either source this cycle -- skipping.")
         return
