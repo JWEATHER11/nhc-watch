@@ -90,7 +90,14 @@ def send_telegram_photo(photo_url, caption=""):
     last_err = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            image_req = urllib.request.Request(photo_url, headers={"User-Agent": "nhc-outlook-pipeline/1.0"})
+            # NHC's image server 403s the custom "nhc-outlook-pipeline/1.0"
+            # UA used elsewhere in this file (confirmed live) -- a
+            # browser-like UA + Referer gets a normal 200, same as loading
+            # the graphic in an actual browser does.
+            image_req = urllib.request.Request(photo_url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                "Referer": "https://www.nhc.noaa.gov/gtwo.php?basin=atlc&fdays=7",
+            })
             with urllib.request.urlopen(image_req, timeout=15) as img_resp:
                 image_bytes = img_resp.read()
 
@@ -129,15 +136,28 @@ def issued_time_from_header(text):
 
 
 def parse_areas(text):
-    """Each numbered area looks like:
+    """Each area looks like either:
     1. Southwestern Gulf:
     <description paragraph>
     * Formation chance through 48 hours...low...10 percent.
     * Formation chance through 7 days...low...10 percent.
+
+    ...or, when NHC isn't numbering areas that cycle (common when there's
+    no active numbered invest), just the bare region name with no "N.":
+    Central Tropical Atlantic:
+    <description paragraph>
+    * Formation chance through 48 hours...low...near 0 percent.
+    * Formation chance through 7 days...low...20 percent.
+
+    The number group is optional to handle both. The region name is
+    restricted to a single line (no re.S bleed-through) and excludes the
+    basin-wide "For the North Atlantic...Gulf of America:" preamble line,
+    which also ends in a colon and would otherwise get matched as a fake
+    first "area" swallowing the real first region into its description.
     """
     areas = []
     pattern = re.compile(
-        r"^\s*(\d+)\.\s+(.+?):\s*\n(.*?)"
+        r"^[ \t]*(?:(\d+)\.\s+)?(?!For\s+the\b)([^\n:]+):[ \t]*\n(.*?)"
         r"\*\s*Formation chance through 48 hours\.\.\.(\w+)\.\.\.(?:near )?(\d+) percent\.\s*\n"
         r"\*\s*Formation chance through 7 days\.\.\.(\w+)\.\.\.(?:near )?(\d+) percent\.",
         re.I | re.M | re.S,
@@ -145,7 +165,7 @@ def parse_areas(text):
     for m in pattern.finditer(text):
         desc = re.sub(r"\s+", " ", m.group(3)).strip()
         areas.append({
-            "number": m.group(1),
+            "number": m.group(1) or str(len(areas) + 1),
             "region": m.group(2).strip(),
             "description": desc,
             "chance_48h_category": m.group(4).strip().title(),
