@@ -756,6 +756,58 @@ def fetch_kfdm_obs():
     return obs
 
 
+# Per instruction: a "storm reported" alert older than this isn't
+# useful -- the storm's likely moved on by the time it's read. Applied
+# to every source before hazard classification. Two different
+# ceilings, not one: ASOS/METAR only issues routine reports roughly
+# hourly by design (confirmed live -- normal ages ran 5-58min across
+# the corridor), so a 20min cutoff would silence it almost entirely,
+# not just filter genuinely stale reports. KFDM updates every few
+# minutes, so it can and should hold to the tighter number.
+ASOS_STALE_MAX_AGE_MIN = 65
+KFDM_STALE_MAX_AGE_MIN = 20
+
+
+def _parse_kfdm_time(obs_time_str):
+    """Parses KFDM's '08/08/2026 4:36PM[CST]' into a Beaumont-local
+    aware datetime. The bracketed timezone abbreviation is ignored --
+    KFDM's station clock is always Beaumont local time regardless of
+    whether it prints CST or CDT."""
+    if not obs_time_str:
+        return None
+    clean = obs_time_str.split("[")[0].strip()
+    try:
+        naive = datetime.strptime(clean, "%m/%d/%Y %I:%M%p")
+    except ValueError:
+        return None
+    return naive.replace(tzinfo=BEAUMONT_TZ)
+
+
+def is_stale(ob, now_utc):
+    """True if this observation is older than its source's staleness
+    ceiling. Checks whichever timestamp field the source actually
+    provided (ASOS: utc_valid; KFDM: obs_time). No timestamp at all --
+    don't block on it rather than silently dropping every observation
+    from a source that doesn't carry one."""
+    utc_valid = ob.get("utc_valid")
+    if utc_valid:
+        try:
+            obs_dt = datetime.strptime(utc_valid, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return False
+        return (now_utc - obs_dt).total_seconds() / 60 > ASOS_STALE_MAX_AGE_MIN
+
+    obs_time = ob.get("obs_time")
+    if obs_time:
+        obs_dt = _parse_kfdm_time(obs_time)
+        if obs_dt is None:
+            return False
+        now_local = now_utc.astimezone(BEAUMONT_TZ)
+        return (now_local - obs_dt).total_seconds() / 60 > KFDM_STALE_MAX_AGE_MIN
+
+    return False
+
+
 def classify_hazards(ob):
     """Returns a dict of {hazard_key: description} for whatever real,
     observed hazards this specific station report shows right now.
@@ -838,7 +890,7 @@ def build_message(new_hazards_by_station):
     now_local = datetime.now(BEAUMONT_TZ)
     lines = [
         "🚨 <b>Real Storm Watch</b> -- station observations (not model)",
-        f"📅 {now_local.strftime('%A, %b %-d %I:%M %p').replace(' 0', ' ')} (Beaumont time)",
+        f"📅 {now_local.strftime('%A, %b %-d %I:%M %p').replace(' 0', ' ')}",
         "",
     ]
     for station, hazards in new_hazards_by_station.items():
@@ -954,10 +1006,14 @@ def process_metar_storm(state):
     active_hazards = state.get("active_hazards", {})
     new_active_hazards = {}
     new_hazards_by_station = {}
+    now_utc = datetime.now(timezone.utc)
 
     for ob in obs:
         station = ob.get("station")
         if not station:
+            continue
+        if is_stale(ob, now_utc):
+            print(f"[{station}] Skipping -- data too old to be useful for a live storm alert.")
             continue
         hazards = classify_hazards(ob)
         if hazards:
