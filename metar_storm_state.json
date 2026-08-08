@@ -3,7 +3,7 @@
     "BPT": [
       "thunderstorm"
     ],
-    "BMT": [
+    "JAS": [
       "thunderstorm"
     ],
     "ORG": [
@@ -18,44 +18,14 @@
     "SGR": [
       "thunderstorm"
     ],
-    "T78": [
-      "thunderstorm"
-    ],
-    "Bayou Din": [
-      "rain_today_0.5"
-    ],
     "Port Acres ES": [
-      "rain_today_0.5",
       "rain_today_1.0",
       "rain_today_2.0"
     ],
-    "Gilbert Adams": [
-      "rain_today_0.5"
-    ],
-    "Port Neches": [
-      "rain_today_0.5"
-    ],
-    "Spurger": [
-      "rain_today_0.5"
-    ],
-    "All Saints Episcopal School": [
-      "rain_today_0.5"
-    ],
     "Rocking Y Ranch": [
-      "rain_today_0.5",
       "rain_today_1.0"
     ],
-    "Barbers Hill ISD": [
-      "rain_today_0.5"
-    ],
-    "Trout Creek VFD": [
-      "rain_today_0.5"
-    ],
-    "Mauriceville-1 mile north": [
-      "rain_today_0.5"
-    ],
     "Kirbyville VFD": [
-      "rain_today_0.5",
       "rain_today_1.0"
     ]
   }
