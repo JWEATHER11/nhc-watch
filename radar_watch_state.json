@@ -3,11 +3,11 @@
     "Jasper",
     "Lake Charles"
   ],
-  "was_severe": true,
+  "was_severe": false,
   "max_dbz_history": [
+    46.5,
     52.0,
     47.0,
-    30.0,
-    35.5
+    30.0
   ]
 }
