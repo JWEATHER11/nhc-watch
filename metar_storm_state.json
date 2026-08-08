@@ -9,6 +9,15 @@
     "ORG": [
       "thunderstorm"
     ],
+    "T78": [
+      "thunderstorm"
+    ],
+    "GLS": [
+      "thunderstorm"
+    ],
+    "LCH": [
+      "thunderstorm"
+    ],
     "Port Acres ES": [
       "heavy_rain"
     ],
@@ -19,6 +28,9 @@
       "heavy_rain"
     ],
     "All Saints Episcopal School": [
+      "heavy_rain"
+    ],
+    "Barbers Hill ISD": [
       "heavy_rain"
     ]
   }
