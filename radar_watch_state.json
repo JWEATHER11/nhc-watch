@@ -1,13 +1,10 @@
 {
-  "active_storm_cities": [
-    "Jasper",
-    "Lake Charles"
-  ],
+  "active_storm_cities": [],
   "was_severe": false,
   "max_dbz_history": [
+    48.0,
     46.5,
     52.0,
-    47.0,
-    30.0
+    47.0
   ]
 }
