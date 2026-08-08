@@ -561,13 +561,17 @@ PHOUR_SANITY_MAX_IN = 6.0
 # approached this range; anything beyond it is a data artifact.
 RAIN_TODAY_SANITY_MAX_IN = 30.0
 
-# Per instruction: one heads-up at 0.5in, not repeated below 1in --
-# then a fresh alert at every additional inch as a real event keeps
-# climbing (1, 2, 3, 4, 5in and beyond), so an ongoing significant
-# event keeps getting updates instead of going silent after the first
-# one. Each tier is its own hazard key, so classify_hazards() only
-# ever alerts once per tier, same mechanism as before.
-RAIN_TODAY_TIERS = [0.5] + [float(i) for i in range(1, int(RAIN_TODAY_SANITY_MAX_IN))]
+# Per instruction: only alert once a station's running total reaches
+# 1in, then a fresh alert at every additional inch as a real event
+# keeps climbing (1, 2, 3, 4, 5in and beyond), so an ongoing
+# significant event keeps getting updates instead of going silent
+# after the first one. Each tier is its own hazard key, so
+# classify_hazards() only ever alerts once per tier -- and
+# process_metar_storm() collapses multiple tiers newly crossed in the
+# SAME cycle down to just the highest one, so a fast-rising event (or
+# a cold-start where several tiers are already past) never repeats the
+# same number on multiple lines.
+RAIN_TODAY_TIERS = [float(i) for i in range(1, int(RAIN_TODAY_SANITY_MAX_IN))]
 
 GUST_THRESHOLD_MPH = 40  # per instruction: alert on any gust/high-wind reading over 40mph
 HEAVY_RAIN_HOURLY_IN = 0.5
@@ -797,7 +801,7 @@ def classify_hazards(ob):
         else:
             for tier in RAIN_TODAY_TIERS:
                 if rain_today >= tier:
-                    hazards[f"rain_today_{tier}"] = f"{rain_today}\" of rain so far today (past {tier}\")"
+                    hazards[f"rain_today_{tier}"] = f"Rain total climbing -- now {rain_today}\""
 
     return hazards
 
@@ -895,6 +899,19 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
+def _collapse_rain_tiers(newly_appeared):
+    """If a station's total jumped enough in one cycle to newly cross
+    several rain_today tiers at once (a fast-rising event, or a
+    cold-start where multiple tiers were already past), keep only the
+    single highest one -- they'd otherwise repeat the identical total
+    on multiple lines, which reads as spam rather than new info."""
+    rain_keys = [k for k in newly_appeared if k.startswith("rain_today_")]
+    if len(rain_keys) <= 1:
+        return newly_appeared
+    highest = max(rain_keys, key=lambda k: float(k.removeprefix("rain_today_")))
+    return {k: v for k, v in newly_appeared.items() if not k.startswith("rain_today_") or k == highest}
+
+
 def process_metar_storm(state):
     asos_obs = fetch_corridor_conditions()
     if not asos_obs:
@@ -938,6 +955,7 @@ def process_metar_storm(state):
             new_active_hazards[station] = list(hazards.keys())
         prev_hazards = set(active_hazards.get(station, []))
         newly_appeared = {k: v for k, v in hazards.items() if k not in prev_hazards}
+        newly_appeared = _collapse_rain_tiers(newly_appeared)
         if newly_appeared:
             new_hazards_by_station[station] = newly_appeared
             print(f"[{station}] New hazard(s): {list(newly_appeared.keys())}")
