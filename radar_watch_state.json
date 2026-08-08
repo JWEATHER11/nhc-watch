@@ -1,10 +1,14 @@
 {
-  "active_storm_cities": [],
-  "was_severe": true,
+  "active_storm_cities": [
+    "Houston",
+    "Jasper",
+    "Lake Charles"
+  ],
+  "was_severe": false,
   "max_dbz_history": [
+    48.0,
     53.5,
     49.0,
-    48.0,
-    46.5
+    48.0
   ]
 }
