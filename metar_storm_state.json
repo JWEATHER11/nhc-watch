@@ -1,15 +1,18 @@
 {
   "active_hazards": {
-    "BPT": [
+    "JAS": [
       "thunderstorm"
     ],
-    "JAS": [
+    "LVJ": [
       "thunderstorm"
     ],
     "CXO": [
       "thunderstorm"
     ],
     "SGR": [
+      "thunderstorm"
+    ],
+    "LFT": [
       "thunderstorm"
     ],
     "Port Acres ES": [
