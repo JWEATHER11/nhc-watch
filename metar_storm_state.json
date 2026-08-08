@@ -9,10 +9,13 @@
     "JAS": [
       "thunderstorm"
     ],
-    "LVJ": [
+    "ORG": [
       "thunderstorm"
     ],
     "IAH": [
+      "thunderstorm"
+    ],
+    "SGR": [
       "thunderstorm"
     ],
     "DRI": [
@@ -31,6 +34,9 @@
       "heavy_rain"
     ],
     "Port Neches": [
+      "heavy_rain"
+    ],
+    "Spurger": [
       "heavy_rain"
     ],
     "All Saints Episcopal School": [
