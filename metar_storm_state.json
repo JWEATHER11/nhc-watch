@@ -1,15 +1,12 @@
 {
   "active_hazards": {
-    "DWH": [
-      "thunderstorm"
-    ],
     "BPT": [
       "thunderstorm"
     ],
-    "JAS": [
+    "BMT": [
       "thunderstorm"
     ],
-    "ORG": [
+    "JAS": [
       "thunderstorm"
     ],
     "SGR": [
@@ -19,6 +16,9 @@
       "thunderstorm"
     ],
     "CWF": [
+      "thunderstorm"
+    ],
+    "T78": [
       "thunderstorm"
     ],
     "Port Acres ES": [
