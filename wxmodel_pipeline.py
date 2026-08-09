@@ -1236,7 +1236,7 @@ def fetch_nhc_outlook_summary():
     return "; ".join(mentions[:6])
 
 
-def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None, line_signal=None, temp_gradient=None, ndfd_changed=True, genesis_trend_notes=None):
+def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags=None, setx_swla_outlook=None, ndfd_summary=None, front_signal=None, line_signal=None, temp_gradient=None, ndfd_changed=True, genesis_trend_notes=None, full_detail=True):
     cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
     cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
     beaumont_str = cycle_local.strftime("%b %-d %I:%M %p").replace(" 0", " ")
@@ -1326,25 +1326,32 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
     rain_bits = []
     if hrrr_detail and hrrr_detail.get("max_total_in") and hrrr_detail["max_total_in"] >= 0.5:
         near = f" near {hrrr_detail['max_near']}" if hrrr_detail.get("max_near") else ""
-        rain_bits.append(f"locally up to {hrrr_detail['max_total_in']}\"{near} today/tomorrow")
+        rain_bits.append(f"up to {hrrr_detail['max_total_in']}\"{near} today/tomorrow")
     if setx_swla_outlook and setx_swla_outlook.get("medium_euro_in") is not None:
-        rain_bits.append(f"~{setx_swla_outlook['medium_euro_in']}\" days 3-5 locally (Euro avg)")
-    if rainfall_flags:
+        rain_bits.append(f"~{setx_swla_outlook['medium_euro_in']}\" days 3-5 (Euro avg)")
+    # Gulf Coast-wide highest folded in only for the full 00Z/12Z report
+    # -- per instruction, 06Z/18Z stays to the example format (local
+    # SETX/SWLA only in the Summary; the full Gulf Coast Rainfall Watch
+    # section further down still lists it either way).
+    if full_detail and rainfall_flags:
         gulf_highest = max(rainfall_flags.values(), key=lambda r: r["total_in"])
         rain_bits.append(f"Gulf Coast highest {gulf_highest['total_in']}\" near {gulf_highest['place']} (next 10 days)")
     rain_notable = bool(rain_bits)
     if rain_bits:
-        summary_lines.append(f"💧 Rainfall: {', '.join(rain_bits)}")
+        summary_lines.append(f"💧 Rainfall (SETX/SWLA): {', '.join(rain_bits)}")
     else:
-        summary_lines.append("💧 Rainfall: mostly dry, nothing significant expected")
+        summary_lines.append("💧 Rainfall (SETX/SWLA): mostly dry, nothing significant expected")
 
-    try:
-        temp_blend = _sx2.fetch_temperature_blend()
-    except Exception as e:
-        print(f"[Combined cycle] Temperature blend unavailable (non-fatal): {e}")
-        temp_blend = None
-    if temp_blend:
-        summary_lines.append(f"🌡️ Temps: today's blend ~{temp_blend['high_f']}°/{temp_blend['low_f']}°F")
+    # Temps line only on the full 00Z/12Z report -- per instruction,
+    # dropped from 06Z/18Z to match the example format.
+    if full_detail:
+        try:
+            temp_blend = _sx2.fetch_temperature_blend()
+        except Exception as e:
+            print(f"[Combined cycle] Temperature blend unavailable (non-fatal): {e}")
+            temp_blend = None
+        if temp_blend:
+            summary_lines.append(f"🌡️ Temps: today's blend ~{temp_blend['high_f']}°/{temp_blend['low_f']}°F")
 
     front_when = f" ({front_signal['dewpoint_drop_time']})" if front_signal and front_signal.get("dewpoint_drop_time") else ""
     front_notable = bool(front_signal and front_signal.get("front_signal")) or bool(afd_front_mentions)
@@ -1376,20 +1383,40 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
         conditions_extra = None
 
     lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
-    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow, conditions_extra))
+    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow, conditions_extra, include_day5=full_detail))
+
+    # Moved up per instruction, right after the local SETX/SWLA outlook
+    # instead of buried below the 7-day forecast/wet bulb/front
+    # sections -- same wide-vs-local rainfall pairing as the Summary
+    # line above, just with full per-model detail. Applies to every
+    # cycle (00/06/12/18Z).
+    if rainfall_flags:
+        lines.append("")
+        lines.append("<b>\U0001F30A GULF COAST RAINFALL WATCH</b> (next 10 days)")
+        for model_name, r in rainfall_flags.items():
+            lines.append(f"💧 {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
+            if r.get("wpc_note"):
+                lines.append(f"  {r['wpc_note']}")
+
     try:
-        seven_day_lines = _sx2.build_seven_day_section(seven_day, ndfd_summary, ndfd_changed)
+        # NWS Comparison only on the full 00Z/12Z report -- per
+        # instruction, dropped from 06Z/18Z to match the example format.
+        nws_comparison_summary = ndfd_summary if full_detail else None
+        seven_day_lines = _sx2.build_seven_day_section(seven_day, nws_comparison_summary, ndfd_changed)
         if seven_day_lines:
             lines.extend(seven_day_lines)
     except Exception as e:
         print(f"[Combined cycle] 7-day forecast section build failed (non-fatal): {e}")
-    try:
-        wet_bulb_days = _sx2.fetch_wet_bulb_by_day()
-        wet_bulb_lines = _sx2.build_wet_bulb_section(wet_bulb_days)
-        if wet_bulb_lines:
-            lines.extend(wet_bulb_lines)
-    except Exception as e:
-        print(f"[Combined cycle] Wet bulb forecast unavailable (non-fatal): {e}")
+    # Wet bulb forecast only on the full 00Z/12Z report -- per
+    # instruction, dropped from 06Z/18Z to match the example format.
+    if full_detail:
+        try:
+            wet_bulb_days = _sx2.fetch_wet_bulb_by_day()
+            wet_bulb_lines = _sx2.build_wet_bulb_section(wet_bulb_days)
+            if wet_bulb_lines:
+                lines.extend(wet_bulb_lines)
+        except Exception as e:
+            print(f"[Combined cycle] Wet bulb forecast unavailable (non-fatal): {e}")
     if line_signal:
         note = _sx2.build_organized_line_note(line_signal)
         if note:
@@ -1403,14 +1430,6 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
         lines.append("")
         lines.extend(front_lines)
 
-    if rainfall_flags:
-        lines.append("")
-        lines.append("<b>\U0001F30A GULF COAST RAINFALL WATCH</b> (next 10 days)")
-        for model_name, r in rainfall_flags.items():
-            lines.append(f"💧 {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
-            if r.get("wpc_note"):
-                lines.append(f"  {r['wpc_note']}")
-
     # Consolidated per instruction -- MAIN MODELS and SIDE NOTES used
     # to split the same story across two headers (GFS/Euro/ICON in one,
     # AIFS/ensemble/NHC/trend in the other) for no real reason once
@@ -1418,42 +1437,46 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
     # section, every model in one place, AIFS and Google AI included
     # (Google AI needs the ensemble-api specifically -- it isn't on
     # the regular deterministic endpoint the other models use).
+    # Condensed per instruction ("that is just ALOT ALOT ALOT... can we
+    # break it up") -- was 5 separate one-model-per-line pressure
+    # readings (each repeating the same region/date), a 3-line ensemble
+    # breakdown, and a raw regex-fragment NHC dump that just repeated
+    # (in a worse format) what the Summary already says cleanly above.
+    # Now: one header naming the flagged spot, one pressure line, one
+    # ensemble line. NHC dropped entirely here since Summary already
+    # covers it via the live outlook parse -- no reason to say it twice,
+    # worse the second time.
     lines.append("")
-    lines.append("<b>\U0001F300 MAIN MODELS</b>")
+    short_ensemble_names = {"Google WeatherNext AI Ensemble": "Google AI", "GEFS (GFS Ensemble)": "GEFS", "ECMWF Ensemble": "ECMWF"}
     if ensemble_hits:
         top_model_name, top, _ = min(ensemble_hits, key=lambda mt: mt[1]["anomaly"])
+        date_label = _fh_to_date_label(top["fh"])
+        lines.append(f"<b>\U0001F300 MAIN MODELS</b> -- near {top['region']}, ~{date_label}")
+
+        pressure_bits = []
         for label, model_param in (("GFS", "gfs_seamless"), ("Euro", "ecmwf_ifs025"), ("ICON", "icon_seamless")):
             val = fetch_point_pressure(top["lat"], top["lon"], top["fh"], model_param)
-            if val is not None:
-                lines.append(f"🌀 {label}: {val} mb near {top['region']} (around {_fh_to_date_label(top['fh'])})")
-            else:
-                lines.append(f"🌀 {label}: data unavailable this cycle")
-        aifs_val = fetch_point_pressure(top["lat"], top["lon"], top["fh"], "ecmwf_aifs025_single")
-        if aifs_val is not None:
-            lines.append(f"🤖 AIFS (AI): {aifs_val} mb near {top['region']} (around {_fh_to_date_label(top['fh'])})")
-        else:
-            lines.append("🤖 AIFS (AI): data unavailable this cycle")
+            pressure_bits.append(f"{label} {val}" if val is not None else f"{label} n/a")
+        # AIFS only on the full 00Z/12Z report -- per instruction,
+        # dropped from 06Z/18Z to match the example format.
+        if full_detail:
+            aifs_val = fetch_point_pressure(top["lat"], top["lon"], top["fh"], "ecmwf_aifs025_single")
+            pressure_bits.append(f"AIFS {aifs_val}" if aifs_val is not None else "AIFS n/a")
         google_val = fetch_point_pressure_ensemble_mean(top["lat"], top["lon"], top["fh"], "google_weathernext2_ensemble")
-        if google_val is not None:
-            lines.append(f"🤖 Google AI: {google_val} mb near {top['region']} (around {_fh_to_date_label(top['fh'])})")
-        else:
-            lines.append("🤖 Google AI: data unavailable this cycle")
+        pressure_bits.append(f"Google AI {google_val}" if google_val is not None else "Google AI n/a")
+        lines.append(f"Pressure (mb): {', '.join(pressure_bits)}")
 
-        date_label = _fh_to_date_label(top["fh"])
         spin = ", real spin" if (top.get("vorticity") or 0) >= VORTICITY_NOTABLE_THRESHOLD else ""
         agreeing = top.get("models_agreeing") or []
         agree_str = f" ({'+'.join(agreeing)} agree)" if len(agreeing) > 1 else ""
-        lines.append(f"🎲 Ensemble check: {tier_label(top['pct'])} of tropical development near {top['region']}, around {date_label}{spin}{agree_str}")
-        pct_str = ", ".join(f"{mn} {t['pct']}%" for mn, t, _ in ensemble_hits)
-        lines.append(f"  ({pct_str})")
+        pct_str = ", ".join(f"{short_ensemble_names.get(mn, mn)} {t['pct']}%" for mn, t, _ in ensemble_hits)
         max_extra = max(n for _, _, n in ensemble_hits)
-        if max_extra > 1:
-            lines.append(f"  ({max_extra - 1} other spot{'s' if max_extra > 2 else ''} also flagged -- worth a look at the raw data)")
+        extra_bit = f", {max_extra - 1} other spot{'s' if max_extra > 2 else ''} also flagged" if max_extra > 1 else ""
+        lines.append(f"🎲 Ensemble: {tier_label(top['pct'])} ({pct_str}){spin}{agree_str}{extra_bit}")
     else:
-        lines.append("🌀 No flagged location this cycle -- nothing specific for GFS/Euro/ICON/AIFS/Google AI to check against.")
-        lines.append("🎲 Ensemble check (Google AI/GEFS/ECMWF): no signs of tropical development")
-    nhc_line = nhc_summary or "unavailable this cycle"
-    lines.append(f"🏛️ NHC: {nhc_line}")
+        lines.append("<b>\U0001F300 MAIN MODELS</b>")
+        lines.append("🌀 No flagged location this cycle -- nothing specific for GFS/Euro/ICON/Google AI to check against.")
+        lines.append("🎲 Ensemble: no signs of tropical development")
     if genesis_trend_notes:
         for note in genesis_trend_notes:
             lines.append(f"📈 {note}")
@@ -1676,7 +1699,12 @@ def process_combined_cycle(state):
     if not should_send_ndfd:
         ndfd_summary = None
 
-    message, worth_sending = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed, genesis_trend_notes)
+    # 06Z/18Z get a trimmed version per instruction (no Temps line, no
+    # Gulf-Coast-fold-in on the Summary rainfall line, no Day 5+, no NWS
+    # Comparison, no Wet Bulb section, no AIFS line) -- everything else,
+    # including the full Gulf Coast Rainfall Watch section, stays.
+    full_detail = cycle_hour_utc in (0, 12)
+    message, worth_sending = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed, genesis_trend_notes, full_detail)
     if not worth_sending:
         print(f"[Combined cycle] Nothing notable this cycle ({cycle_key}) -- not sending, per instruction.")
         state["last_combined_cycle"] = cycle_key

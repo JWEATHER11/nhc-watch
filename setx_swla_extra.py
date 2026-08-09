@@ -484,7 +484,7 @@ def fetch_setx_swla_wpc_corroboration():
     return None
 
 
-def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None, conditions_extra=None):
+def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None, conditions_extra=None, include_day5=True):
     if not outlook:
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
@@ -562,16 +562,19 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
     # heavy-rain-potential line always shown (YES or the reassuring
     # "nothing pointing to" NO) since that's the one part of the old
     # 3-line version that was explicitly asked to stay.
-    lines.append("<b>\U0001F52E Day 5+</b>")
-    trend_label = outlook.get("long_trend_label") or _long_range_pattern(outlook.get("long_coverage_pct"))
-    if outlook.get("max_long_total_in") is not None:
-        lines.append(f"- {trend_label} -- up to {outlook['max_long_total_in']}\" possible somewhere in the corridor")
-    else:
-        lines.append(f"- {trend_label}")
-    if outlook.get("heavy_potential"):
-        lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor, watch for training storms/localized flooding")
-    else:
-        lines.append("- Heavy rain potential: nothing pointing to 1\"+/hr training storms right now")
+    # Day 5+ only on the full 00Z/12Z report -- per instruction, dropped
+    # from 06Z/18Z to match the example format.
+    if include_day5:
+        lines.append("<b>\U0001F52E Day 5+</b>")
+        trend_label = outlook.get("long_trend_label") or _long_range_pattern(outlook.get("long_coverage_pct"))
+        if outlook.get("max_long_total_in") is not None:
+            lines.append(f"- {trend_label} -- up to {outlook['max_long_total_in']}\" possible somewhere in the corridor")
+        else:
+            lines.append(f"- {trend_label}")
+        if outlook.get("heavy_potential"):
+            lines.append(f"- Heavy rain potential: YES -- up to {outlook['max_hourly_in']}\"/hr somewhere in the corridor, watch for training storms/localized flooding")
+        else:
+            lines.append("- Heavy rain potential: nothing pointing to 1\"+/hr training storms right now")
 
     if wpc_setx_swla_note:
         lines.append("")
@@ -758,7 +761,15 @@ def fetch_front_signal():
         "shift_to_north": wind_widespread,
         "wind_shift_time": _format_front_time(wind_shift_time),
         "front_signal": dewpoint_widespread or wind_widespread,
-        "cooling_signal": temp_widespread,
+        # Confirmed live 2026-08-08: this used to fire on temp_widespread
+        # alone, so "Meaningful cooling signal" could show up in the same
+        # message as "Front: none indicated this cycle" -- a plain
+        # temperature drop can just be rain-cooled air, cloud cover, or
+        # the normal diurnal cycle, not a real airmass change. Per
+        # instruction ("dewpoints are HUGE for cold fronts"), a cooling
+        # signal is only meaningful when dewpoints are ALSO dropping
+        # widely at the same time, not temperature alone.
+        "cooling_signal": temp_widespread and dewpoint_widespread,
         "season": "summer" if summer else "standard",
         "dp_threshold_used": dp_threshold,
         "temp_threshold_used": temp_threshold,
