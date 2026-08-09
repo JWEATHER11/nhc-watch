@@ -1494,6 +1494,7 @@ GULF_COAST_RAIN_POINTS = [
     (30.08, -94.10, "Beaumont, TX"),
     (27.80, -97.40, "Corpus Christi, TX"),
     (35.47, -97.52, "Oklahoma City, OK"),
+    (30.23, -93.22, "Lake Charles, LA"),
     (29.95, -90.07, "New Orleans, LA"),
     (30.45, -91.19, "Baton Rouge, LA"),
     (34.75, -92.29, "Little Rock, AR"),
@@ -1628,11 +1629,52 @@ def _fetch_rainfall_totals_google_ai():
     return totals
 
 
+def _fetch_rainfall_totals_hrrr_by_day():
+    """HRRR only extends ~48h, so unlike the 10-day-summed models above,
+    today and tomorrow are tracked as two separate single-day totals --
+    per instruction, HRRR's own highest total specifically for today
+    and specifically for tomorrow, across the same wide Gulf Coast/
+    Southern Plains/Southeast domain (GULF_COAST_RAIN_POINTS already
+    covers TX/OK/LA/AR/TN/MS/AL/FL/GA/SC/VA)."""
+    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
+    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
+    cache_buster = int(time.time())
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat_str}&longitude={lon_str}"
+        f"&daily=precipitation_sum&models=ncep_hrrr_conus"
+        f"&forecast_days=2&timezone=America/Chicago&_cb={cache_buster}"
+    )
+    data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:hrrr")
+    if not data:
+        return {}, {}
+    try:
+        points = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}, {}
+    if not isinstance(points, list):
+        return {}, {}
+    today_totals, tomorrow_totals = {}, {}
+    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
+        try:
+            totals_mm = point["daily"]["precipitation_sum"]
+        except (KeyError, TypeError):
+            continue
+        if len(totals_mm) > 0 and totals_mm[0] is not None:
+            today_totals[place_name] = round(totals_mm[0] / 25.4, 1)
+        if len(totals_mm) > 1 and totals_mm[1] is not None:
+            tomorrow_totals[place_name] = round(totals_mm[1] / 25.4, 1)
+    return today_totals, tomorrow_totals
+
+
 def fetch_gulf_coast_rainfall():
+    hrrr_today, hrrr_tomorrow = _fetch_rainfall_totals_hrrr_by_day()
     model_totals = {
         "GFS": _fetch_rainfall_totals("gfs"),
         "Euro": _fetch_rainfall_totals("ecmwf"),
         "Google AI": _fetch_rainfall_totals_google_ai(),
+        "HRRR Today": hrrr_today,
+        "HRRR Tomorrow": hrrr_tomorrow,
     }
     results = {}
     wpc_blocks = None
