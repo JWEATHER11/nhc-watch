@@ -67,6 +67,9 @@
     ],
     "T78": [
       "thunderstorm"
+    ],
+    "UTS": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -76,7 +79,8 @@
       "CXO",
       "LFT",
       "SGR",
-      "T78"
+      "T78",
+      "UTS"
     ]
   }
 }
