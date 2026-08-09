@@ -342,16 +342,48 @@ def process_storm(storm, state):
 
 def process_quiet_basin(state):
     """Only announces 'quiet' once per day, so it doesn't spam -- keyed
-    off the date so a genuinely new day gets a fresh quiet notice."""
+    off the date so a genuinely new day gets a fresh quiet notice.
+
+    This only runs when fetch_active_atlantic_storms() finds no NAMED/
+    numbered storm with active advisories -- that does NOT mean NHC
+    isn't tracking anything. Confirmed live, 2026-08-08: NHC's 7-Day
+    Outlook had two disturbance areas at 20%/40% formation chance while
+    this still said "no active systems," which read as flatly wrong even
+    though it was watching model-based genesis signal elsewhere in the
+    combined-cycle report. Pulling in the same NHC outlook summary used
+    there so "no named storm yet" and "nothing being watched at all"
+    aren't collapsed into the same message."""
     today_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if state.get("quiet_announced_date") == today_key:
         print("Basin quiet -- already announced today, not resending.")
         return
 
-    message = (
-        "Tropical Atlantic, Caribbean, and Gulf of Mexico -- quiet.\n\n"
-        "No active systems at this time."
-    )
+    # Reuses nhc_outlook_pipeline's parse_areas() (fixed 2026-08-08 to
+    # handle NHC's unnumbered region headers) for a clean "region (pct)"
+    # summary here, rather than the raw regex-fragment join that
+    # fetch_nhc_outlook_summary() below produces for the combined-cycle
+    # report -- that format is fine buried in a detailed report, but too
+    # noisy for this one-line notice.
+    areas = []
+    try:
+        import nhc_outlook_pipeline as _nhc
+        outlook_text, _ = _nhc.fetch_outlook()
+        if outlook_text:
+            areas = _nhc.parse_areas(outlook_text)
+    except Exception as e:
+        print(f"[quiet-basin] NHC outlook areas unavailable (non-fatal): {e}")
+
+    if areas:
+        area_bits = [f"{a['region']} ({a['chance_7day_pct']}% in 7 days)" for a in areas]
+        message = (
+            "Tropical Atlantic, Caribbean, and Gulf of Mexico -- no named storms yet.\n\n"
+            f"NHC is watching: {', '.join(area_bits)}"
+        )
+    else:
+        message = (
+            "Tropical Atlantic, Caribbean, and Gulf of Mexico -- quiet.\n\n"
+            "No active systems at this time."
+        )
     try:
         deliver(message)
     except Exception as e:
@@ -1188,8 +1220,8 @@ def fetch_nhc_outlook_summary():
     if "tropical cyclone formation is not expected" in lower and "percent" not in lower:
         return "No areas of interest noted by NHC."
     mentions = re.findall(
-        r"Formation chance through 48 hours\.\.\.\w+\.\.\.\d+ percent"
-        r"|Formation chance through 7 days\.\.\.\w+\.\.\.\d+ percent",
+        r"Formation chance through 48 hours\.\.\.\w+\.\.\.(?:near )?\d+ percent"
+        r"|Formation chance through 7 days\.\.\.\w+\.\.\.(?:near )?\d+ percent",
         text,
     )
     if not mentions:
