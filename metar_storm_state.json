@@ -62,9 +62,6 @@
     "SGR": [
       "thunderstorm"
     ],
-    "LFT": [
-      "thunderstorm"
-    ],
     "T78": [
       "thunderstorm"
     ],
@@ -73,14 +70,17 @@
     ],
     "LVJ": [
       "thunderstorm"
+    ],
+    "3R7": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-09T20:20:10Z",
     "active_stations": [
+      "3R7",
       "BMT",
       "CXO",
-      "LFT",
       "LVJ",
       "SGR",
       "T78",
