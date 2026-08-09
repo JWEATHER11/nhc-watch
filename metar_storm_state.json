@@ -1,5 +1,8 @@
 {
   "active_hazards": {
+    "LFK": [
+      "thunderstorm"
+    ],
     "Port Acres ES": [
       "rain_today_1.0",
       "rain_today_2.0"
