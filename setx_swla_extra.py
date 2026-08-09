@@ -133,14 +133,45 @@ def fetch_setx_swla_rainfall_outlook():
     medium_coverage_pct = coverage_for_range(3, 5)
     long_coverage_pct = coverage_for_range(5, 10)
 
+    # Day 5+ heavy-rain-potential check -- confirmed live 2026-08-08 this
+    # was contradicting the total right above it ("mostly dry, 0.0\"
+    # possible" immediately followed by "Heavy rain potential: YES, up to
+    # 1.8\"/hr, flooding"). Two bugs: (1) it scanned EVERY hour of EVERY
+    # model including HRRR, which only has ~48h of data and so can never
+    # actually represent "Day 5+" -- a today/tomorrow HRRR blip was
+    # getting mislabeled as a days-5-10 signal; (2) it took the single
+    # highest hourly value anywhere with no corroboration, the same
+    # isolated-grid-point-artifact failure mode already fixed for HRRR's
+    # own rain/gust checks (see _has_neighbor_support below) but never
+    # applied here. Fixed by scoping to the actual day-5-10 hour window
+    # (matching the daily[5:10] bucket used for the total above) and
+    # excluding HRRR entirely, plus requiring an adjacent hour at the
+    # same point to also show a meaningful fraction of the spike --
+    # a real sustained burst shows up in neighboring hours too; a single
+    # isolated hour spiking alone reads as a numerical artifact.
+    DAY5_HOUR_START, DAY5_HOUR_END = 120, 240  # hours 120-239 = days 5-9
+
+    def _hourly_has_support(hourly_mm, idx, value_mm):
+        floor_mm = 5.0  # ~0.2in -- below this, not worth checking at all
+        if value_mm < floor_mm:
+            return False
+        neighbors = [
+            hourly_mm[i] for i in (idx - 1, idx + 1)
+            if 0 <= i < len(hourly_mm) and hourly_mm[i] is not None
+        ]
+        if not neighbors:
+            return False
+        return max(neighbors) >= max(value_mm * 0.5, floor_mm)
+
     max_hourly_in = 0.0
-    for points in (gfs_points, euro_points, hrrr_points):
+    for points in (gfs_points, euro_points):  # HRRR excluded -- only ~48h, can't represent Day 5+
         if not points:
             continue
         for point in points:
             hourly_mm = point.get("hourly", {}).get("precipitation", [])
-            for v in hourly_mm:
-                if v is not None:
+            for idx in range(DAY5_HOUR_START, min(DAY5_HOUR_END, len(hourly_mm))):
+                v = hourly_mm[idx]
+                if v is not None and v > 0 and _hourly_has_support(hourly_mm, idx, v):
                     max_hourly_in = max(max_hourly_in, v / 25.4)
 
     if short_gfs is None and short_euro is None and long_confidence_pct is None:

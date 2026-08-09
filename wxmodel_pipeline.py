@@ -1637,90 +1637,12 @@ def fetch_gulf_coast_rainfall():
     return results
 
 
-FULL_REPORT_CYCLE_HOURS = {0, 12}  # per instruction, 06Z/18Z only get HRRR/Google AI -- see process_offcycle_hrrr_google
-
-
-def process_offcycle_hrrr_google(state, cycle_key, cycle_hour_utc):
-    """06Z/18Z cycles, per instruction: skip the full GFS/ECMWF 'Model
-    Watch' report (too much at the off-cycles) but keep flagging
-    anything genuinely worth knowing from HRRR or Google AI specifically
-    -- the two sources explicitly asked to keep. This does NOT touch
-    hrrr_alert_pipeline.py (the separate, dedicated HRRR Alert Watch
-    pipeline/workflow) -- that keeps running exactly as before; this
-    only controls what THIS combined-cycle report includes."""
-    import setx_swla_extra as _sx2
-    lines = []
-    fingerprint_parts = []
-
-    try:
-        hrrr_detail = _sx2.fetch_hrrr_grid_detail()
-    except Exception as e:
-        print(f"[Off-cycle {cycle_key}] HRRR grid detail unavailable (non-fatal): {e}")
-        hrrr_detail = None
-    if hrrr_detail and hrrr_detail.get("max_total_in") and hrrr_detail["max_total_in"] >= 0.5:
-        near = f" near {hrrr_detail['max_near']}" if hrrr_detail.get("max_near") else ""
-        lines.append(f"🌧️ HRRR: up to {hrrr_detail['max_total_in']}\"{near} today/tomorrow")
-        fingerprint_parts.append(f"hrrr:{hrrr_detail['max_total_in']}:{hrrr_detail.get('max_near')}")
-
-    try:
-        google_signal = fetch_ensemble_genesis_signal("google_ai")
-    except Exception as e:
-        print(f"[Off-cycle {cycle_key}] Google AI signal unavailable (non-fatal): {e}")
-        google_signal = None
-    if google_signal and google_signal.get("findings"):
-        top = min(google_signal["findings"], key=lambda f: f["anomaly"])
-        lines.append(
-            f"🤖 Google AI: {tier_label(top['pct'])} of development near {top['region']}, "
-            f"around {_fh_to_date_label(top['fh'])}"
-        )
-        fingerprint_parts.append(f"google:{top['region']}:{top['pct']}")
-
-    if not lines:
-        print(f"[Off-cycle {cycle_key}] Nothing from HRRR or Google AI -- not sending.")
-        state["last_combined_cycle"] = cycle_key
-        save_state(state)
-        return
-
-    # Per instruction ("if things keep saying the same things take it
-    # out too") -- don't resend an unchanged HRRR max/Google AI top hit
-    # every 6 hours just because the cycle rolled over. Only sends again
-    # once the actual signal moves.
-    fingerprint = "|".join(fingerprint_parts)
-    if fingerprint and state.get("last_offcycle_fingerprint") == fingerprint:
-        print(f"[Off-cycle {cycle_key}] Same HRRR/Google AI signal as last time -- not resending.")
-        state["last_combined_cycle"] = cycle_key
-        save_state(state)
-        return
-
-    cycle_dt_utc = datetime.now(timezone.utc).replace(hour=cycle_hour_utc, minute=0, second=0, microsecond=0)
-    cycle_local = cycle_dt_utc.astimezone(BEAUMONT_TZ)
-    beaumont_str = cycle_local.strftime("%b %-d %I:%M %p").replace(" 0", " ")
-    message = "\n".join([
-        "<b>\U0001F30E Model Watch (HRRR/Google AI)</b> -- Beaumont time",
-        f"Cycle: {cycle_hour_utc:02d}Z (~{beaumont_str})",
-        "",
-    ] + lines)
-
-    try:
-        deliver(message)
-    except Exception as e:
-        send_failure_alert("Off-cycle HRRR/Google AI delivery", str(e))
-        return
-    print(f"[Off-cycle {cycle_key}] Sent successfully.")
-    state["last_combined_cycle"] = cycle_key
-    state["last_offcycle_fingerprint"] = fingerprint
-    save_state(state)
-
-
 def process_combined_cycle(state):
     cycle_key = current_cycle_key()
     if state.get("last_combined_cycle") == cycle_key:
         print(f"[Combined cycle] Already sent {cycle_key} -- not resending.")
         return
     cycle_hour_utc = int(cycle_key.split("T")[1])
-    if cycle_hour_utc not in FULL_REPORT_CYCLE_HOURS:
-        process_offcycle_hrrr_google(state, cycle_key, cycle_hour_utc)
-        return
     gfs_scan = fetch_model_grid("gfs", forecast_days=16)
     ecmwf_scan = fetch_model_grid("ecmwf", forecast_days=15)
     ensemble_signals = {}
