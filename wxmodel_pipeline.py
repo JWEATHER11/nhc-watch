@@ -1382,21 +1382,20 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
         print(f"[Combined cycle] Conditions detail unavailable (non-fatal): {e}")
         conditions_extra = None
 
-    lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
-    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow, conditions_extra, include_day5=full_detail))
-
-    # Moved up per instruction, right after the local SETX/SWLA outlook
-    # instead of buried below the 7-day forecast/wet bulb/front
-    # sections -- same wide-vs-local rainfall pairing as the Summary
-    # line above, just with full per-model detail. Applies to every
-    # cycle (00/06/12/18Z).
+    # Built here and threaded into build_setx_swla_section so it lands
+    # exactly between "Today" and "Tomorrow" -- per instruction, an
+    # exact line-for-line example of the wanted placement. Applies to
+    # every cycle (00/06/12/18Z).
+    gulf_coast_lines = None
     if rainfall_flags:
-        lines.append("")
-        lines.append("<b>\U0001F30A GULF COAST RAINFALL WATCH</b> (next 10 days)")
+        gulf_coast_lines = ["<b>\U0001F30A GULF COAST RAINFALL WATCH</b> (next 10 days)"]
         for model_name, r in rainfall_flags.items():
-            lines.append(f"💧 {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
+            gulf_coast_lines.append(f"💧 {model_name}: heaviest near {r['place']}, {r['total_in']}\" possible")
             if r.get("wpc_note"):
-                lines.append(f"  {r['wpc_note']}")
+                gulf_coast_lines.append(f"  {r['wpc_note']}")
+
+    lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
+    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow, conditions_extra, include_day5=full_detail, gulf_coast_lines=gulf_coast_lines))
 
     try:
         # NWS Comparison only on the full 00Z/12Z report -- per

@@ -484,7 +484,7 @@ def fetch_setx_swla_wpc_corroboration():
     return None
 
 
-def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None, conditions_extra=None, include_day5=True):
+def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None, conditions_extra=None, include_day5=True, gulf_coast_lines=None):
     if not outlook:
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
@@ -525,6 +525,12 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
 
         lines.append(day_line("Today", d0, today_rain_in, today_wind))
         lines.append("")
+        # Gulf Coast Rainfall Watch wedged in right here, per instruction
+        # -- an exact line-for-line example of the wanted placement
+        # (between Today and Tomorrow, not after the whole outlook).
+        if gulf_coast_lines:
+            lines.extend(gulf_coast_lines)
+            lines.append("")
         lines.append(day_line("Tomorrow", d1, tomorrow_rain_in, tomorrow_wind))
     else:
         lines.append("- Data unavailable this cycle.")
