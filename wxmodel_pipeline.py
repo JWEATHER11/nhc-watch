@@ -1266,11 +1266,6 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
         print(f"[Combined cycle] Today/tomorrow wind unavailable (non-fatal): {e}")
         wind_today_tomorrow = None
     try:
-        ndfd_today_tomorrow, ndfd_days_3_5 = _sx2.fetch_ndfd_qpf_by_range()
-    except Exception as e:
-        print(f"[Combined cycle] NDFD range data unavailable (non-fatal): {e}")
-        ndfd_today_tomorrow, ndfd_days_3_5 = None, None
-    try:
         wpc_setx_swla_note = _sx2.fetch_setx_swla_wpc_corroboration()
     except Exception as e:
         print(f"[Combined cycle] SETX/SWLA WPC check unavailable (non-fatal): {e}")
@@ -1323,12 +1318,19 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
     else:
         summary_lines.append("🌀 Tropics: quiet, no significant signals this cycle")
 
+    # Confirmed live 2026-08-09: this used max_total_in (today+tomorrow
+    # COMBINED at whichever grid cell has the highest 2-day sum), while
+    # the Today section below shows that same cell's TODAY-only portion
+    # -- e.g. Summary said "2.8\" today/tomorrow" while Today said
+    # "2.4\"", which is mathematically consistent (2.4 today + 0.4
+    # tomorrow = 2.8 combined) but reads as a flat contradiction. Now
+    # uses max_today_in so this line and the Today line always show the
+    # literal same number. Days 3-5 dropped from here too, per
+    # instruction, along with the section itself further down.
     rain_bits = []
-    if hrrr_detail and hrrr_detail.get("max_total_in") and hrrr_detail["max_total_in"] >= 0.5:
+    if hrrr_detail and hrrr_detail.get("max_today_in") and hrrr_detail["max_today_in"] >= 0.5:
         near = f" near {hrrr_detail['max_near']}" if hrrr_detail.get("max_near") else ""
-        rain_bits.append(f"up to {hrrr_detail['max_total_in']}\"{near} today/tomorrow")
-    if setx_swla_outlook and setx_swla_outlook.get("medium_euro_in") is not None:
-        rain_bits.append(f"~{setx_swla_outlook['medium_euro_in']}\" days 3-5 (Euro avg)")
+        rain_bits.append(f"up to {hrrr_detail['max_today_in']}\" today{near}")
     # Gulf Coast-wide highest folded in only for the full 00Z/12Z report
     # -- per instruction, 06Z/18Z stays to the example format (local
     # SETX/SWLA only in the Summary; the full Gulf Coast Rainfall Watch
@@ -1375,17 +1377,10 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
     lines.extend(summary_lines)
     lines.append("")
 
-    try:
-        conditions_detail = _sx2.fetch_conditions_detail()
-        conditions_extra = _sx2.build_conditions_extra(conditions_detail, setx_swla_outlook, front_signal, gfs_scan, ecmwf_scan)
-    except Exception as e:
-        print(f"[Combined cycle] Conditions detail unavailable (non-fatal): {e}")
-        conditions_extra = None
-
     # Built here and threaded into build_setx_swla_section so it lands
-    # exactly between "Today" and "Tomorrow" -- per instruction, an
-    # exact line-for-line example of the wanted placement. Applies to
-    # every cycle (00/06/12/18Z).
+    # right after "Today" -- per instruction, an exact line-for-line
+    # example of the wanted placement. Applies to every cycle
+    # (00/06/12/18Z).
     gulf_coast_lines = None
     if rainfall_flags:
         gulf_coast_lines = ["<b>\U0001F30A GULF COAST RAINFALL WATCH</b> (next 10 days)"]
@@ -1395,7 +1390,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
                 gulf_coast_lines.append(f"  {r['wpc_note']}")
 
     lines.append("<b>\U0001F327️ SETX/SWLA RAIN OUTLOOK</b>")
-    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, ndfd_today_tomorrow, ndfd_days_3_5, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow, conditions_extra, include_day5=full_detail, gulf_coast_lines=gulf_coast_lines))
+    lines.extend(_sx2.build_setx_swla_section(setx_swla_outlook, seven_day, hrrr_grid_lines, wpc_setx_swla_note, hrrr_detail, wind_today_tomorrow, include_day5=full_detail, gulf_coast_lines=gulf_coast_lines))
 
     try:
         # NWS Comparison only on the full 00Z/12Z report -- per
@@ -1406,16 +1401,8 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
             lines.extend(seven_day_lines)
     except Exception as e:
         print(f"[Combined cycle] 7-day forecast section build failed (non-fatal): {e}")
-    # Wet bulb forecast only on the full 00Z/12Z report -- per
-    # instruction, dropped from 06Z/18Z to match the example format.
-    if full_detail:
-        try:
-            wet_bulb_days = _sx2.fetch_wet_bulb_by_day()
-            wet_bulb_lines = _sx2.build_wet_bulb_section(wet_bulb_days)
-            if wet_bulb_lines:
-                lines.extend(wet_bulb_lines)
-        except Exception as e:
-            print(f"[Combined cycle] Wet bulb forecast unavailable (non-fatal): {e}")
+    # 7-Day Wet Bulb Forecast section removed entirely per instruction,
+    # 2026-08-09 ("let's just get rid of the wetbulb 7 day altogether").
     if line_signal:
         note = _sx2.build_organized_line_note(line_signal)
         if note:
@@ -1849,8 +1836,9 @@ def process_combined_cycle(state):
 
     # 06Z/18Z get a trimmed version per instruction (no Temps line, no
     # Gulf-Coast-fold-in on the Summary rainfall line, no Day 5+, no NWS
-    # Comparison, no Wet Bulb section, no AIFS line) -- everything else,
-    # including the full Gulf Coast Rainfall Watch section, stays.
+    # Comparison, no AIFS line) -- everything else, including the full
+    # Gulf Coast Rainfall Watch section, stays. Wet Bulb is gone on every
+    # cycle now, not just trimmed on 06Z/18Z (see build_combined_cycle_report).
     full_detail = cycle_hour_utc in (0, 12)
     message, worth_sending = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed, genesis_trend_notes, full_detail)
     if not worth_sending:

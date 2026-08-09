@@ -484,7 +484,7 @@ def fetch_setx_swla_wpc_corroboration():
     return None
 
 
-def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_today_tomorrow=None, ndfd_days_3_5=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None, conditions_extra=None, include_day5=True, gulf_coast_lines=None):
+def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, wpc_setx_swla_note=None, hrrr_detail=None, wind_today_tomorrow=None, include_day5=True, gulf_coast_lines=None):
     if not outlook:
         return ["- Local SETX/SWLA rainfall data unavailable this cycle."]
     lines = []
@@ -498,14 +498,19 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
     # (high/low, rain%, rain amount, wind) instead of one combined
     # coverage sentence for both days -- and only call out heavy rain
     # or a strong gust when they're actually there.
-    lines.append("<b>\U0001F4C6 Today & Tomorrow</b>")
-    if seven_day and seven_day[0] and seven_day[1]:
-        d0, d1 = seven_day[0], seven_day[1]
+    # Trimmed per instruction, 2026-08-09 ("VERY repetitive... just take
+    # all this out"): dropped the Tomorrow line, the heat
+    # index/dewpoint/rain-timing/pattern extras, and the NWS Houston/
+    # Lake Charles line here -- Tomorrow's own number still shows up in
+    # the Gulf Coast Rainfall Watch's "HRRR Tomorrow" line, so it isn't
+    # lost, just not repeated here too. Header renamed since this is
+    # Today-only now.
+    lines.append("<b>\U0001F4C6 Today</b>")
+    if seven_day and seven_day[0]:
+        d0 = seven_day[0]
         rain_near = f" near {hrrr_detail['max_near']}" if hrrr_detail and hrrr_detail.get("max_near") else ""
         today_rain_in = hrrr_detail.get("max_today_in") if hrrr_detail else None
-        tomorrow_rain_in = hrrr_detail.get("max_tomorrow_in") if hrrr_detail else None
         today_wind = wind_today_tomorrow[0] if wind_today_tomorrow else None
-        tomorrow_wind = wind_today_tomorrow[1] if wind_today_tomorrow else None
 
         def day_line(label, day, rain_in, wind):
             bits = [f"High {day['high']}F / Low {day['low']}F", f"{day['rain_pct']}% rain chance"]
@@ -526,41 +531,11 @@ def build_setx_swla_section(outlook, seven_day=None, hrrr_grid_lines=None, ndfd_
         lines.append(day_line("Today", d0, today_rain_in, today_wind))
         lines.append("")
         # Gulf Coast Rainfall Watch wedged in right here, per instruction
-        # -- an exact line-for-line example of the wanted placement
-        # (between Today and Tomorrow, not after the whole outlook).
+        # -- an exact line-for-line example of the wanted placement.
         if gulf_coast_lines:
             lines.extend(gulf_coast_lines)
-            lines.append("")
-        lines.append(day_line("Tomorrow", d1, tomorrow_rain_in, tomorrow_wind))
     else:
         lines.append("- Data unavailable this cycle.")
-    if conditions_extra:
-        lines.extend(conditions_extra)
-    if ndfd_today_tomorrow:
-        nws_parts = [f"{office} {total}\"" for office, total in ndfd_today_tomorrow.items()]
-        lines.append("- NWS: " + ", ".join(nws_parts))
-    lines.append("")
-
-    # Days 3-5: pulled from the same dense-grid 7-Day Forecast (day
-    # indices 2-4), per instruction -- same reasoning as above, this
-    # used to come from the old sparse 5-point grid.
-    lines.append("<b>\U0001F5D3️ Days 3-5</b>")
-    mid_days = [d for d in (seven_day[2:5] if seven_day and len(seven_day) >= 5 else []) if d]
-    if mid_days:
-        avg_pct = round(sum(d["rain_pct"] for d in mid_days) / len(mid_days))
-        cov = _coverage_word(avg_pct) or "mostly dry"
-        parts = []
-        if outlook["medium_euro_in"] is not None:
-            parts.append(f"Euro {outlook['medium_euro_in']}\"")
-        if outlook["medium_gfs_in"] is not None:
-            parts.append(f"GFS {outlook['medium_gfs_in']}\"")
-        model_str = (", ".join(parts) + " -- " if parts else "")
-        lines.append(f"- {model_str}{cov} (~{avg_pct}% coverage, dense grid)")
-    else:
-        lines.append("- Data unavailable this cycle.")
-    if ndfd_days_3_5:
-        nws_parts = [f"{office} {total}\"" for office, total in ndfd_days_3_5.items()]
-        lines.append("- NWS: " + ", ".join(nws_parts))
     lines.append("")
 
     # Collapsed the old first two lines into one per instruction --
