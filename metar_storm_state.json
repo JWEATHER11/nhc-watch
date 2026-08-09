@@ -65,9 +65,6 @@
     "IAH": [
       "thunderstorm"
     ],
-    "ORG": [
-      "thunderstorm"
-    ],
     "Votaw-Thicket VFD": [
       "rain_today_1.0"
     ],
@@ -91,8 +88,7 @@
       "DWH",
       "IAH",
       "JAS",
-      "LFK",
-      "ORG"
+      "LFK"
     ]
   }
 }
