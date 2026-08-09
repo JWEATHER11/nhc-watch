@@ -28,12 +28,14 @@ work, kept separate from the model-based WXMODEL chat.
 import csv
 import io
 import json
+import math
 import os
 import re
 import sys
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -756,6 +758,158 @@ def fetch_kfdm_obs():
     return obs
 
 
+# --- Weather Underground / IBM Weather Company PWS network ----------
+# Per instruction: hundreds more real stations across the same
+# corridor, using the user's own registered-station API key (never
+# committed -- read from the environment, matching every other
+# credential in this repo). Confirmed live 2026-08-09: a 9x9 grid scan
+# around Beaumont finds 500+ real unique stations within 95 miles in
+# well under a second (concurrent), and fetching all of their current
+# conditions concurrently takes ~5-6s -- fast enough to do fresh, in
+# full, every single poll cycle rather than caching a station list.
+WU_CENTER_LAT = 30.0802  # Beaumont, TX
+WU_CENTER_LON = -94.1266
+WU_RADIUS_MILES = 95
+WU_GRID_STEP = 0.45
+WU_GRID_OFFSETS = [-2.0, -1.5, -1.0, -0.5, 0, 0.5, 1.0, 1.5, 2.0]
+WU_MAX_WORKERS = 20
+WU_STALE_MAX_AGE_MIN = 20  # matches KFDM -- WU PWS reports nearly real-time (confirmed live: median age 0.3min)
+WU_RAIN_TODAY_SANITY_MAX_IN = 30.0  # same ceiling as KFDM's rain_today -- see RAIN_TODAY_SANITY_MAX_IN comment
+WU_GUST_SANITY_MAX_MPH = 150.0  # backyard PWS hardware can glitch; a US wind-gust record is ~253mph (tornado), but a
+# plain PWS anemometer reporting anywhere near that is a sensor fault, not real weather -- discard rather than alert.
+
+
+def _wu_haversine_miles(lat1, lon1, lat2, lon2):
+    R = 3958.8
+    dlat, dlon = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _wu_get_nearby(lat, lon, api_key):
+    url = f"https://api.weather.com/v3/location/near?geocode={lat},{lon}&product=pws&format=json&apiKey={api_key}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "metar-storm-pipeline/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return []
+    loc = data.get("location") or {}
+    ids = loc.get("stationId") or []
+    lats = loc.get("latitude") or []
+    lons = loc.get("longitude") or []
+    return list(zip(ids, lats, lons))
+
+
+def wu_discover_stations(api_key):
+    """Concurrent 9x9 grid scan around Beaumont -- see WU_GRID_* consts.
+    Returns {station_id: (lat, lon, distance_mi)} for every unique
+    station within WU_RADIUS_MILES, deduped across overlapping grid
+    cells."""
+    grid_points = [
+        (WU_CENTER_LAT + dlat * WU_GRID_STEP, WU_CENTER_LON + dlon * WU_GRID_STEP)
+        for dlat in WU_GRID_OFFSETS for dlon in WU_GRID_OFFSETS
+    ]
+    stations = {}
+    with ThreadPoolExecutor(max_workers=WU_MAX_WORKERS) as ex:
+        futures = [ex.submit(_wu_get_nearby, lat, lon, api_key) for lat, lon in grid_points]
+        for fut in as_completed(futures):
+            for sid, lat_s, lon_s in fut.result():
+                if not sid or sid in stations or lat_s is None or lon_s is None:
+                    continue
+                dist = _wu_haversine_miles(WU_CENTER_LAT, WU_CENTER_LON, lat_s, lon_s)
+                if dist <= WU_RADIUS_MILES:
+                    stations[sid] = (lat_s, lon_s, round(dist, 1))
+    return stations
+
+
+def _wu_get_current(station_id, api_key):
+    url = (
+        f"https://api.weather.com/v2/pws/observations/current"
+        f"?stationId={station_id}&format=json&units=e&apiKey={api_key}&numericPrecision=decimal"
+    )
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "metar-storm-pipeline/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+    obs_list = data.get("observations") or []
+    return obs_list[0] if obs_list else None
+
+
+def fetch_wu_pws_obs():
+    """Hundreds of real Weather Underground PWS stations across the
+    corridor, discovered fresh every cycle (see wu_discover_stations)
+    and fetched concurrently. Non-fatal on any failure -- an unset key,
+    a network blip, or WU being down just means this cycle runs
+    without this source, same as every other observation source here.
+
+    qcStatus 0 means WU's own QC explicitly FAILED that reading --
+    those are dropped outright, not just deprioritized (same spirit as
+    the DCP incident: don't trust a source's own known-bad flag away).
+    Physical sanity ceilings on gust/rain_today guard against the
+    backyard-hardware equivalent of that incident (a glitched sensor
+    reporting a wildly implausible spike)."""
+    api_key = os.environ.get("WU_API_KEY")
+    if not api_key:
+        return []
+    try:
+        stations = wu_discover_stations(api_key)
+    except Exception as e:
+        print(f"[WU PWS] Station discovery failed this cycle (non-fatal): {e}")
+        return []
+    if not stations:
+        return []
+
+    obs = []
+    with ThreadPoolExecutor(max_workers=WU_MAX_WORKERS) as ex:
+        futures = {ex.submit(_wu_get_current, sid, api_key): sid for sid in stations}
+        for fut in as_completed(futures):
+            sid = futures[fut]
+            r = fut.result()
+            if not r:
+                continue
+            if r.get("qcStatus") == 0:
+                continue  # WU's own QC failed this reading -- don't trust it
+
+            _, _, dist_mi = stations[sid]
+            imperial = r.get("imperial") or {}
+
+            gust = imperial.get("windGust")
+            if gust is not None and gust > WU_GUST_SANITY_MAX_MPH:
+                print(f"[WU PWS sanity check] Discarding implausible gust={gust}mph at {sid} -- sensor fault, not real weather.")
+                gust = None
+
+            rain_today = imperial.get("precipTotal")
+            if rain_today is not None and rain_today > WU_RAIN_TODAY_SANITY_MAX_IN:
+                print(f"[WU PWS sanity check] Discarding implausible rain_today={rain_today}in at {sid} -- sensor fault, not real weather.")
+                rain_today = None
+
+            neighborhood = r.get("neighborhood") or sid
+            label = f"{neighborhood} -- {dist_mi}mi from Beaumont ({sid})"
+
+            obs_time_display = None
+            obs_time_local = r.get("obsTimeLocal")
+            if obs_time_local:
+                try:
+                    dt = datetime.strptime(obs_time_local, "%Y-%m-%d %H:%M:%S")
+                    obs_time_display = dt.strftime("%-m/%-d %-I:%M%p")
+                except ValueError:
+                    obs_time_display = obs_time_local
+
+            obs.append({
+                "station": label,
+                "wxcodes": "",
+                "gust": None,  # WU's "gust" already arrives in mph, not knots -- goes in wind_mph, same as KFDM
+                "wind_mph": gust,
+                "rain_today": rain_today,
+                "obs_time": obs_time_display,
+                "wu_utc_valid": r.get("obsTimeUtc"),
+            })
+    return obs
+
+
 # Per instruction: a "storm reported" alert older than this isn't
 # useful -- the storm's likely moved on by the time it's read. Applied
 # to every source before hazard classification. Two different
@@ -786,9 +940,20 @@ def _parse_kfdm_time(obs_time_str):
 def is_stale(ob, now_utc):
     """True if this observation is older than its source's staleness
     ceiling. Checks whichever timestamp field the source actually
-    provided (ASOS: utc_valid; KFDM: obs_time). No timestamp at all --
-    don't block on it rather than silently dropping every observation
-    from a source that doesn't carry one."""
+    provided (ASOS: utc_valid; KFDM: obs_time; WU PWS: wu_utc_valid --
+    kept separate from ASOS's utc_valid despite the identical ISO
+    format, since WU needs KFDM's tighter cadence-appropriate ceiling,
+    not ASOS's much more lenient one). No timestamp at all -- don't
+    block on it rather than silently dropping every observation from a
+    source that doesn't carry one."""
+    wu_utc_valid = ob.get("wu_utc_valid")
+    if wu_utc_valid:
+        try:
+            obs_dt = datetime.strptime(wu_utc_valid, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return False
+        return (now_utc - obs_dt).total_seconds() / 60 > WU_STALE_MAX_AGE_MIN
+
     utc_valid = ob.get("utc_valid")
     if utc_valid:
         try:
@@ -998,7 +1163,14 @@ def process_metar_storm(state):
         kfdm_obs = []
     print(f"[KFDM] {len(kfdm_obs)}/{len(KFDM_WEATHERNET_STATIONS)} stations reported this cycle.")
 
-    obs = asos_obs + dcp_obs + kfdm_obs
+    try:
+        wu_obs = fetch_wu_pws_obs()
+    except Exception as e:
+        print(f"WU PWS fetch failed this cycle (non-fatal): {e}")
+        wu_obs = []
+    print(f"[WU PWS] {len(wu_obs)} stations reported this cycle.")
+
+    obs = asos_obs + dcp_obs + kfdm_obs + wu_obs
     if not obs:
         print("No observations from either source this cycle -- skipping.")
         return
