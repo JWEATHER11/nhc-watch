@@ -5,7 +5,9 @@
     ],
     "Port Of PA": [
       "rain_today_1.0",
-      "rain_today_2.0"
+      "rain_today_2.0",
+      "rain_today_3.0",
+      "rain_today_4.0"
     ],
     "Gulf Coast Bug Zappers": [
       "rain_today_1.0"
@@ -32,10 +34,12 @@
       "thunderstorm"
     ],
     "Wildwood": [
-      "rain_today_1.0"
+      "rain_today_1.0",
+      "rain_today_2.0"
     ],
     "Warren -- 36.5mi from Beaumont (KTXWARRE18)": [
-      "rain_today_1.0"
+      "rain_today_1.0",
+      "rain_today_2.0"
     ],
     "3R7": [
       "thunderstorm"
@@ -44,6 +48,21 @@
       "thunderstorm"
     ],
     "Village Mills -- 35.4mi from Beaumont (KTXVILLA11)": [
+      "rain_today_1.0"
+    ],
+    "SGR": [
+      "thunderstorm"
+    ],
+    "Warren": [
+      "rain_today_1.0"
+    ],
+    "Sam Houston": [
+      "rain_today_1.0"
+    ],
+    "Pear Ridge -- 15.7mi from Beaumont (KTXPORTA188)": [
+      "rain_today_1.0"
+    ],
+    "Warren -- 40.2mi from Beaumont (KTXWARRE17)": [
       "rain_today_1.0"
     ]
   }
