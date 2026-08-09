@@ -56,10 +56,19 @@
     "Beaumont -- 14.5mi from Beaumont (KTXBEAUM125)": [
       "rain_today_1.0"
     ],
-    "CXO": [
+    "LFK": [
       "thunderstorm"
     ],
-    "LFK": [
+    "BMT": [
+      "thunderstorm"
+    ],
+    "JAS": [
+      "thunderstorm"
+    ],
+    "IAH": [
+      "thunderstorm"
+    ],
+    "SGR": [
       "thunderstorm"
     ]
   }
