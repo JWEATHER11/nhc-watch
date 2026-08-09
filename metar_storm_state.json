@@ -53,9 +53,6 @@
     "Saratoga -- 38.7mi from Beaumont (KTXSARAT4)": [
       "rain_today_1.0"
     ],
-    "3R7": [
-      "thunderstorm"
-    ],
     "SGR": [
       "thunderstorm"
     ],
@@ -64,12 +61,14 @@
     ],
     "Mauriceville -- 18.0mi from Beaumont (KTXORANG279)": [
       "rain_today_1.0"
+    ],
+    "Mauriceville -- 17.0mi from Beaumont (KTXORANG285)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-09T22:22:19Z",
     "active_stations": [
-      "3R7",
       "SGR"
     ]
   }
