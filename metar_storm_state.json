@@ -27,11 +27,14 @@
     "Sulphur -- 49.1mi from Beaumont (KLASULPH116)": [
       "rain_today_1.0"
     ],
-    "Wallisville -- 40.7mi from Beaumont (KTXWALLI34)": [
-      "gust"
-    ],
     "DWH": [
       "thunderstorm"
+    ],
+    "Wildwood": [
+      "rain_today_1.0"
+    ],
+    "Warren -- 36.5mi from Beaumont (KTXWARRE18)": [
+      "rain_today_1.0"
     ]
   }
 }
