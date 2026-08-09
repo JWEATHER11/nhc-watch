@@ -47,9 +47,6 @@
     "Beaumont -- 14.5mi from Beaumont (KTXBEAUM125)": [
       "rain_today_1.0"
     ],
-    "BMT": [
-      "thunderstorm"
-    ],
     "Votaw-Thicket VFD": [
       "rain_today_1.0"
     ],
@@ -57,12 +54,6 @@
       "rain_today_1.0"
     ],
     "CXO": [
-      "thunderstorm"
-    ],
-    "SGR": [
-      "thunderstorm"
-    ],
-    "T78": [
       "thunderstorm"
     ],
     "UTS": [
@@ -76,14 +67,11 @@
     ]
   },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-09T20:20:10Z",
+    "last_sent_utc": "2026-08-09T21:21:15Z",
     "active_stations": [
       "3R7",
-      "BMT",
       "CXO",
       "LVJ",
-      "SGR",
-      "T78",
       "UTS"
     ]
   }
