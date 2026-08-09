@@ -1,15 +1,15 @@
 {
   "last_alerted": {
-    "coverage_pct": 11,
-    "max_total_in": 5.8,
-    "max_near": "Houston",
-    "max_day_label": "tomorrow",
-    "onset_hour_idx": 20,
-    "onset_hour_str": "2026-08-09T15:00:00-05:00",
-    "max_gust_mph": 38.7,
+    "coverage_pct": 7,
+    "max_total_in": 3.7,
+    "max_near": "Beaumont/Port Arthur",
+    "max_day_label": "today",
+    "onset_hour_idx": 40,
+    "onset_hour_str": "2026-08-10T11:00:00-05:00",
+    "max_gust_mph": 35.6,
     "max_gust_near": "Houston",
-    "max_gust_hour_str": "2026-08-09T16:00:00-05:00",
-    "run_cycle_str": "2026-08-09T18:00:00+00:00",
+    "max_gust_hour_str": "2026-08-10T15:00:00-05:00",
+    "run_cycle_str": "2026-08-09T19:00:00+00:00",
     "href": {
       "cycle": "2026-08-09T12:00:00+00:00",
       "day1": {
