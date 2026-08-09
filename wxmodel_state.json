@@ -71,7 +71,7 @@
     "NWS Houston": 0.1,
     "NWS Lake Charles": 0.1
   },
-  "last_combined_cycle": "2026-08-09T12",
+  "last_combined_cycle": null,
   "genesis_trend_history": [
     [
       "Caribbean Sea",
