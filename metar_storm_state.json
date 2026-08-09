@@ -29,9 +29,6 @@
       "rain_today_1.0",
       "rain_today_2.0"
     ],
-    "BPT": [
-      "thunderstorm"
-    ],
     "Village Mills -- 35.4mi from Beaumont (KTXVILLA11)": [
       "rain_today_1.0"
     ],
@@ -53,9 +50,6 @@
     "BMT": [
       "thunderstorm"
     ],
-    "JAS": [
-      "thunderstorm"
-    ],
     "Votaw-Thicket VFD": [
       "rain_today_1.0"
     ],
@@ -64,15 +58,25 @@
     ],
     "CXO": [
       "thunderstorm"
+    ],
+    "SGR": [
+      "thunderstorm"
+    ],
+    "LFT": [
+      "thunderstorm"
+    ],
+    "T78": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-09T20:20:10Z",
     "active_stations": [
       "BMT",
-      "BPT",
       "CXO",
-      "JAS"
+      "LFT",
+      "SGR",
+      "T78"
     ]
   }
 }
