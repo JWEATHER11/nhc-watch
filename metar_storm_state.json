@@ -4,7 +4,8 @@
       "rain_today_1.0"
     ],
     "Port Of PA": [
-      "rain_today_1.0"
+      "rain_today_1.0",
+      "rain_today_2.0"
     ],
     "Gulf Coast Bug Zappers": [
       "rain_today_1.0"
@@ -41,6 +42,9 @@
     ],
     "BPT": [
       "thunderstorm"
+    ],
+    "Village Mills -- 35.4mi from Beaumont (KTXVILLA11)": [
+      "rain_today_1.0"
     ]
   }
 }
