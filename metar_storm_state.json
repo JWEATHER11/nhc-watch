@@ -70,6 +70,9 @@
     ],
     "UTS": [
       "thunderstorm"
+    ],
+    "LVJ": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -78,6 +81,7 @@
       "BMT",
       "CXO",
       "LFT",
+      "LVJ",
       "SGR",
       "T78",
       "UTS"
