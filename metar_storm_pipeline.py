@@ -581,6 +581,8 @@ RAIN_TODAY_SANITY_MAX_IN = 30.0
 RAIN_TODAY_TIERS = [float(i) for i in range(1, int(RAIN_TODAY_SANITY_MAX_IN))]
 
 GUST_THRESHOLD_MPH = 40  # per instruction: alert on any gust/high-wind reading over 40mph
+THUNDERSTORM_THROTTLE_MIN = 60  # per instruction: consolidate thunderstorm coverage updates to
+# roughly hourly instead of one alert per newly-reporting station -- see process_metar_storm.
 HEAVY_RAIN_HOURLY_IN = 0.5
 
 KT_TO_MPH = 1.15078
@@ -1043,6 +1045,7 @@ HAZARD_EMOJI = {
     "hail": "🧊",
     "gust": "💨",
     "heavy_rain": "💧",
+    "thunderstorm_coverage": "⛈️",
 }
 
 
@@ -1192,6 +1195,7 @@ def process_metar_storm(state):
     # even though its total hadn't moved and it hadn't rained in hours).
     new_active_hazards = dict(active_hazards)
     new_hazards_by_station = {}
+    current_thunderstorm_stations = set()
     now_utc = datetime.now(timezone.utc)
 
     for ob in obs:
@@ -1202,6 +1206,8 @@ def process_metar_storm(state):
             print(f"[{station}] Skipping -- data too old to be useful for a live storm alert.")
             continue
         hazards = classify_hazards(ob)
+        if "thunderstorm" in hazards:
+            current_thunderstorm_stations.add(station)
         # This station actually reported fresh data this cycle, so its
         # memory is fully replaced by what's true right now (clears
         # resolved momentary hazards like gust/thunderstorm correctly).
@@ -1212,6 +1218,16 @@ def process_metar_storm(state):
         prev_hazards = set(active_hazards.get(station, []))
         newly_appeared = {k: v for k, v in hazards.items() if k not in prev_hazards}
         newly_appeared = _collapse_rain_tiers(newly_appeared)
+        # Thunderstorm handled separately below as one throttled,
+        # consolidated update instead of an immediate per-station alert
+        # -- per instruction, keep rain/wind fully real-time but stop
+        # firing a fresh message every time another station in an
+        # already-ongoing storm system crosses its own "first TS
+        # report" moment (a widespread system can trip a dozen
+        # different stations' first-report threshold within minutes of
+        # each other, which read as spam even though each one is
+        # technically a distinct new station).
+        newly_appeared.pop("thunderstorm", None)
         if newly_appeared:
             new_hazards_by_station[station] = newly_appeared
             print(f"[{station}] New hazard(s): {list(newly_appeared.keys())}")
@@ -1219,6 +1235,38 @@ def process_metar_storm(state):
             print(f"[{station}] Hazard(s) ongoing, already alerted: {list(hazards.keys())}")
 
     state["active_hazards"] = new_active_hazards
+
+    # Thunderstorm coverage throttle -- global across all stations, not
+    # per-station. Always alerts immediately when coverage resumes after
+    # a genuine lull (zero active stations last cycle, one or more now);
+    # otherwise, while coverage stays continuously active, only sends an
+    # updated consolidated list once per THUNDERSTORM_THROTTLE_MIN.
+    throttle = state.get("thunderstorm_throttle") or {}
+    was_active = bool(throttle.get("active_stations"))
+    is_active = bool(current_thunderstorm_stations)
+    send_ts_update = False
+    if is_active and not was_active:
+        send_ts_update = True
+    elif is_active and was_active:
+        last_sent_str = throttle.get("last_sent_utc")
+        last_sent = None
+        if last_sent_str:
+            try:
+                last_sent = datetime.strptime(last_sent_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            except ValueError:
+                last_sent = None
+        if last_sent is None or (now_utc - last_sent).total_seconds() >= THUNDERSTORM_THROTTLE_MIN * 60:
+            send_ts_update = True
+
+    if send_ts_update:
+        station_list = sorted(current_thunderstorm_stations)
+        summary = f"Reported at: {', '.join(station_list)} ({len(station_list)} station{'s' if len(station_list) != 1 else ''})"
+        new_hazards_by_station["Thunderstorm Activity"] = {"thunderstorm_coverage": summary}
+        throttle["last_sent_utc"] = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"[Thunderstorm throttle] Sending consolidated update -- {len(station_list)} station(s).")
+    throttle["active_stations"] = sorted(current_thunderstorm_stations)
+    state["thunderstorm_throttle"] = throttle
+
     save_state(state)
 
     if not new_hazards_by_station:

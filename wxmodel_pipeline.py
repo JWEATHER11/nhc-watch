@@ -1317,6 +1317,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
         summary_lines.append(f"🌀 Tropics: {' | '.join(tropics_bits)}")
     else:
         summary_lines.append("🌀 Tropics: quiet, no significant signals this cycle")
+    summary_lines.append("")
 
     # Confirmed live 2026-08-09: this used max_total_in (today+tomorrow
     # COMBINED at whichever grid cell has the highest 2-day sum), while
@@ -1343,17 +1344,11 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
         summary_lines.append(f"💧 Rainfall (SETX/SWLA): {', '.join(rain_bits)}")
     else:
         summary_lines.append("💧 Rainfall (SETX/SWLA): mostly dry, nothing significant expected")
+    summary_lines.append("")
 
-    # Temps line only on the full 00Z/12Z report -- per instruction,
-    # dropped from 06Z/18Z to match the example format.
-    if full_detail:
-        try:
-            temp_blend = _sx2.fetch_temperature_blend()
-        except Exception as e:
-            print(f"[Combined cycle] Temperature blend unavailable (non-fatal): {e}")
-            temp_blend = None
-        if temp_blend:
-            summary_lines.append(f"🌡️ Temps: today's blend ~{temp_blend['high_f']}°/{temp_blend['low_f']}°F")
+    # Temps line removed from the Summary entirely per instruction,
+    # 2026-08-09 -- today's high/low already shows in the Today line
+    # in SETX/SWLA RAIN OUTLOOK below, no need to say it twice.
 
     front_when = f" ({front_signal['dewpoint_drop_time']})" if front_signal and front_signal.get("dewpoint_drop_time") else ""
     front_notable = bool(front_signal and front_signal.get("front_signal")) or bool(afd_front_mentions)
@@ -1363,6 +1358,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
         summary_lines.append(f"🌬️ Front: NWS mentions one{front_when}, models not fully agreeing yet -- see FRONT WATCH below")
     else:
         summary_lines.append("🌬️ Front: none indicated this cycle")
+    summary_lines.append("")
 
     peak_note = _sx2.peak_day_note(seven_day)
     if peak_note:
