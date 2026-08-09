@@ -93,14 +93,47 @@ def split_into_day_blocks(text):
     return blocks
 
 
+SUBSECTION_HEADER_RE = re.compile(r"^\.\.\.([A-Za-z][\w /]*)\.\.\.\s*$", re.M)
+
+
 def block_matches_region_and_risk(block_text):
-    """True only if the block mentions our region AND a non-marginal
-    (Slight/Moderate/High) risk -- Marginal-only mentions never match,
-    per instruction."""
-    upper = block_text.upper()
-    has_region = any(kw in upper for kw in REGION_KEYWORDS)
-    has_risk = any(kw in upper for kw in NON_MARGINAL_RISK_WORDS)
-    return has_region and has_risk
+    """True only if our region is mentioned AND a non-marginal (Slight/
+    Moderate/High) risk is described specifically in that SAME
+    subsection -- Marginal-only mentions of our region never match,
+    per instruction.
+
+    Confirmed live 2026-08-08: a whole-block check (region anywhere +
+    risk word anywhere) false-matched because the Day 1 discussion had
+    a real Slight Risk for the Upper Midwest (unrelated) while our
+    region (Houston/Beaumont) was only mentioned, separately, at
+    Marginal risk in the Southeast section -- the two conditions were
+    each individually true but for entirely different regions. WPC's
+    discussions are broken into named subsections ('...Upper
+    Midwest...', '...Southeast...', etc.); this now requires the
+    region and risk mention to fall in the same subsection."""
+    subsections = []
+    headers = list(SUBSECTION_HEADER_RE.finditer(block_text))
+    if headers:
+        # Text before the first named subsection (the day's opening
+        # "THERE IS A [X] RISK OF EXCESSIVE RAINFALL FOR PORTIONS OF
+        # [AREA]..." headline) counts as its own chunk too, in case a
+        # single-region day names the area directly there.
+        if headers[0].start() > 0:
+            subsections.append(block_text[:headers[0].start()])
+        for i, h in enumerate(headers):
+            start = h.start()
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(block_text)
+            subsections.append(block_text[start:end])
+    else:
+        subsections = [block_text]
+
+    for section in subsections:
+        upper = section.upper()
+        has_region = any(kw in upper for kw in REGION_KEYWORDS)
+        has_risk = any(kw in upper for kw in NON_MARGINAL_RISK_WORDS)
+        if has_region and has_risk:
+            return True
+    return False
 
 
 def graphic_url(day_num):
