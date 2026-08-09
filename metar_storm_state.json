@@ -64,6 +64,9 @@
     ],
     "3R7": [
       "thunderstorm"
+    ],
+    "LFK": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -71,6 +74,7 @@
     "active_stations": [
       "3R7",
       "CXO",
+      "LFK",
       "LVJ",
       "UTS"
     ]
