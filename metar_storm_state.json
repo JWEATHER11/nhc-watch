@@ -53,13 +53,10 @@
     "Saratoga -- 38.7mi from Beaumont (KTXSARAT4)": [
       "rain_today_1.0"
     ],
-    "CXO": [
-      "thunderstorm"
-    ],
-    "UTS": [
-      "thunderstorm"
-    ],
     "3R7": [
+      "thunderstorm"
+    ],
+    "SGR": [
       "thunderstorm"
     ]
   },
@@ -67,8 +64,7 @@
     "last_sent_utc": "2026-08-09T21:21:15Z",
     "active_stations": [
       "3R7",
-      "CXO",
-      "UTS"
+      "SGR"
     ]
   }
 }
