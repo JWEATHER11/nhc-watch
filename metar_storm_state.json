@@ -59,9 +59,6 @@
     "UTS": [
       "thunderstorm"
     ],
-    "3R7": [
-      "thunderstorm"
-    ],
     "LFK": [
       "thunderstorm"
     ]
@@ -69,7 +66,6 @@
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-09T21:21:15Z",
     "active_stations": [
-      "3R7",
       "CXO",
       "LFK",
       "UTS"
