@@ -62,17 +62,11 @@
     "JAS": [
       "thunderstorm"
     ],
-    "IAH": [
-      "thunderstorm"
-    ],
     "Votaw-Thicket VFD": [
       "rain_today_1.0"
     ],
     "Saratoga -- 38.7mi from Beaumont (KTXSARAT4)": [
       "rain_today_1.0"
-    ],
-    "3R7": [
-      "thunderstorm"
     ],
     "CXO": [
       "thunderstorm"
@@ -81,12 +75,10 @@
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-09T20:20:10Z",
     "active_stations": [
-      "3R7",
       "BMT",
       "BPT",
       "CXO",
       "DWH",
-      "IAH",
       "JAS",
       "LFK"
     ]
