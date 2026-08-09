@@ -478,7 +478,12 @@ KFDM_WEATHERNET_STATIONS = {
     "Newton": "Newton",
     "Nome": "Nome",
     "Pinehurst": "Pinehurst",
-    "Port Of PA": "Port Of PA",
+    # "Port Of PA" removed per instruction, 2026-08-09 -- confirmed live
+    # its rain gauge is malfunctioning (reported 8.47in, then 9.19in
+    # minutes later, while the user directly confirmed under 2in had
+    # actually fallen locally). Excluding it from KFDM_WEATHERNET_STATIONS
+    # means fetch_kfdm_obs() skips its placemark entirely, so it can't
+    # trigger any future alert.
     "Dominion Ranch": "Dominion Ranch",
     "Roy Guess": "Roy Guess",
     "Sabine Pass": "Sabine Pass",
