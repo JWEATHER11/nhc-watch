@@ -1290,35 +1290,64 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
         if signal and signal.get("findings"):
             top = min(signal["findings"], key=lambda f: f["anomaly"])
             ensemble_hits.append((model_name, top, len(signal["findings"])))
-    is_interesting = bool(ensemble_hits) or bool(nhc_summary and "percent" in nhc_summary)
-
-    # Top-of-message executive summary, per instruction -- tropical
-    # development, regional rainfall, and any front/storm signal, all in
-    # one place, ahead of the full section-by-section detail below.
+    # Top-of-message executive summary -- per instruction, kept to just
+    # tropics/rainfall/temps/fronts, tropics tied to the latest NHC
+    # outlook specifically (not just a raw model-agreement check), and
+    # rainfall covering both the wider Gulf Coast and locally (SETX/
+    # SWLA), so the reader isn't left guessing which one a bare number
+    # refers to.
     summary_lines = ["<b>\U0001F4DD Summary</b>"]
+
+    try:
+        import nhc_outlook_pipeline as _nhc_out
+        _outlook_text, _ = _nhc_out.fetch_outlook()
+        nhc_areas = _nhc_out.parse_areas(_outlook_text) if _outlook_text else []
+    except Exception as e:
+        print(f"[Combined cycle] NHC outlook areas unavailable for summary (non-fatal): {e}")
+        nhc_areas = []
+
+    tropics_bits = []
+    if nhc_areas:
+        for a in nhc_areas:
+            geo = _nhc_out.region_geo_context(a["region"])
+            geo_suffix = f" -- {geo}" if geo else ""
+            tropics_bits.append(f"NHC: {a['region']} ({a['chance_7day_pct']}% in 7 days){geo_suffix}")
     if ensemble_hits:
         top_model_name, top, _ = min(ensemble_hits, key=lambda mt: mt[1]["anomaly"])
-        summary_lines.append(
-            f"🌀 Tropical: {tier_label(top['pct'])} of development near {top['region']}, "
-            f"around {_fh_to_date_label(top['fh'])} -- worth watching (see SIDE NOTES below)"
+        tropics_bits.append(
+            f"models: {tier_label(top['pct'])} near {top['region']}, around {_fh_to_date_label(top['fh'])}"
         )
-    elif nhc_summary and "percent" in nhc_summary:
-        summary_lines.append(f"🌀 Tropical: NHC noting formation chances -- {nhc_summary}")
+    tropical_notable = bool(tropics_bits)
+    if tropics_bits:
+        summary_lines.append(f"🌀 Tropics: {' | '.join(tropics_bits)}")
     else:
-        summary_lines.append("🌀 Tropical: quiet, no significant signals this cycle")
+        summary_lines.append("🌀 Tropics: quiet, no significant signals this cycle")
 
     rain_bits = []
     if hrrr_detail and hrrr_detail.get("max_total_in") and hrrr_detail["max_total_in"] >= 0.5:
         near = f" near {hrrr_detail['max_near']}" if hrrr_detail.get("max_near") else ""
-        rain_bits.append(f"up to {hrrr_detail['max_total_in']}\"{near} today/tomorrow")
+        rain_bits.append(f"locally up to {hrrr_detail['max_total_in']}\"{near} today/tomorrow")
     if setx_swla_outlook and setx_swla_outlook.get("medium_euro_in") is not None:
-        rain_bits.append(f"~{setx_swla_outlook['medium_euro_in']}\" days 3-5 (Euro avg)")
+        rain_bits.append(f"~{setx_swla_outlook['medium_euro_in']}\" days 3-5 locally (Euro avg)")
+    if rainfall_flags:
+        gulf_highest = max(rainfall_flags.values(), key=lambda r: r["total_in"])
+        rain_bits.append(f"Gulf Coast highest {gulf_highest['total_in']}\" near {gulf_highest['place']} (next 10 days)")
+    rain_notable = bool(rain_bits)
     if rain_bits:
-        summary_lines.append(f"💧 Rainfall (SETX/SWLA): {', '.join(rain_bits)}")
+        summary_lines.append(f"💧 Rainfall: {', '.join(rain_bits)}")
     else:
-        summary_lines.append("💧 Rainfall (SETX/SWLA): mostly dry, nothing significant expected")
+        summary_lines.append("💧 Rainfall: mostly dry, nothing significant expected")
+
+    try:
+        temp_blend = _sx2.fetch_temperature_blend()
+    except Exception as e:
+        print(f"[Combined cycle] Temperature blend unavailable (non-fatal): {e}")
+        temp_blend = None
+    if temp_blend:
+        summary_lines.append(f"🌡️ Temps: today's blend ~{temp_blend['high_f']}°/{temp_blend['low_f']}°F")
 
     front_when = f" ({front_signal['dewpoint_drop_time']})" if front_signal and front_signal.get("dewpoint_drop_time") else ""
+    front_notable = bool(front_signal and front_signal.get("front_signal")) or bool(afd_front_mentions)
     if front_signal and front_signal.get("front_signal"):
         summary_lines.append(f"🌬️ Front: signs of a real front moving through{front_when}")
     elif afd_front_mentions:
@@ -1329,6 +1358,12 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
     peak_note = _sx2.peak_day_note(seven_day)
     if peak_note:
         summary_lines.append(f"📅 {peak_note}")
+
+    # Per instruction: only send this whole (long) report when at least
+    # one of the headline categories actually has something in it --
+    # not just because a 00Z/12Z cycle rolled over. NDFD's own change
+    # detector counts too, since that's already its own real signal.
+    worth_sending = tropical_notable or rain_notable or front_notable or bool(ndfd_changed and ndfd_summary)
 
     lines.extend(summary_lines)
     lines.append("")
@@ -1426,7 +1461,7 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
     lines.append("")
     lines.append("Expect updates roughly: 00Z ~2AM, 06Z ~8AM, 12Z ~2PM, 18Z ~8PM (Beaumont time)")
 
-    return "\n".join(lines)
+    return "\n".join(lines), worth_sending
 
 # Representative coastal/near-coastal points across the Gulf Coast
 # states -- used to flag heavy rainfall potential specifically for TX,
@@ -1719,7 +1754,12 @@ def process_combined_cycle(state):
     if not should_send_ndfd:
         ndfd_summary = None
 
-    message = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed, genesis_trend_notes)
+    message, worth_sending = build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_signals, nhc_summary, rainfall_flags, setx_swla_outlook, ndfd_summary, front_signal, line_signal, temp_gradient, ndfd_changed, genesis_trend_notes)
+    if not worth_sending:
+        print(f"[Combined cycle] Nothing notable this cycle ({cycle_key}) -- not sending, per instruction.")
+        state["last_combined_cycle"] = cycle_key
+        save_state(state)
+        return
     try:
         deliver(message)
     except Exception as e:
