@@ -21,9 +21,6 @@
     "Sulphur -- 49.1mi from Beaumont (KLASULPH116)": [
       "rain_today_1.0"
     ],
-    "DWH": [
-      "thunderstorm"
-    ],
     "Wildwood": [
       "rain_today_1.0",
       "rain_today_2.0"
@@ -53,9 +50,6 @@
     "Beaumont -- 14.5mi from Beaumont (KTXBEAUM125)": [
       "rain_today_1.0"
     ],
-    "LFK": [
-      "thunderstorm"
-    ],
     "BMT": [
       "thunderstorm"
     ],
@@ -78,9 +72,7 @@
       "BMT",
       "BPT",
       "CXO",
-      "DWH",
-      "JAS",
-      "LFK"
+      "JAS"
     ]
   }
 }
