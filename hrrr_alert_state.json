@@ -1,50 +1,50 @@
 {
   "last_alerted": {
-    "coverage_pct": 0,
-    "max_total_in": 1.8,
-    "max_near": "Lake Charles",
-    "max_day_label": "tomorrow",
-    "onset_hour_idx": null,
-    "onset_hour_str": null,
-    "max_gust_mph": 27.3,
-    "max_gust_near": "Houston",
-    "max_gust_hour_str": "2026-08-04T22:00:00-05:00",
-    "run_cycle_str": "2026-08-04T00:00:00+00:00",
+    "coverage_pct": 2,
+    "max_total_in": 4.0,
+    "max_near": "Houston",
+    "max_day_label": "today",
+    "onset_hour_idx": 43,
+    "onset_hour_str": "2026-08-10T14:00:00-05:00",
+    "max_gust_mph": 36.5,
+    "max_gust_near": "Lake Charles",
+    "max_gust_hour_str": "2026-08-09T15:00:00-05:00",
+    "run_cycle_str": "2026-08-09T00:00:00+00:00",
     "href": {
-      "cycle": "2026-08-03T18:00:00+00:00",
+      "cycle": "2026-08-08T18:00:00+00:00",
       "day1": {
-        "Houston": 66,
-        "Beaumont": 43,
-        "Port Arthur": 60,
-        "Jasper": 0,
-        "Lake Charles": 50
+        "Houston": 94,
+        "Beaumont": 97,
+        "Port Arthur": 98,
+        "Jasper": 76,
+        "Lake Charles": 80
       },
       "day2": {
-        "Houston": 88,
-        "Beaumont": 62,
-        "Port Arthur": 66,
-        "Jasper": 4,
-        "Lake Charles": 74
+        "Houston": 82,
+        "Beaumont": 99,
+        "Port Arthur": 100,
+        "Jasper": 36,
+        "Lake Charles": 100
       }
     }
   },
   "href_cache": {
-    "fetched_at": "2026-08-04T02:17:35.395043+00:00",
+    "fetched_at": "2026-08-09T02:19:42.123660+00:00",
     "data": {
-      "cycle": "2026-08-03T18:00:00+00:00",
+      "cycle": "2026-08-08T18:00:00+00:00",
       "day1": {
-        "Houston": 66,
-        "Beaumont": 43,
-        "Port Arthur": 60,
-        "Jasper": 0,
-        "Lake Charles": 50
+        "Houston": 94,
+        "Beaumont": 97,
+        "Port Arthur": 98,
+        "Jasper": 76,
+        "Lake Charles": 80
       },
       "day2": {
-        "Houston": 88,
-        "Beaumont": 62,
-        "Port Arthur": 66,
-        "Jasper": 4,
-        "Lake Charles": 74
+        "Houston": 82,
+        "Beaumont": 99,
+        "Port Arthur": 100,
+        "Jasper": 36,
+        "Lake Charles": 100
       }
     }
   }
