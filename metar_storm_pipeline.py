@@ -1004,7 +1004,16 @@ def process_metar_storm(state):
         return
 
     active_hazards = state.get("active_hazards", {})
-    new_active_hazards = {}
+    # Start from the PREVIOUS cycle's memory, not empty -- a station that
+    # simply doesn't show up in this cycle's fetch (a transient KFDM
+    # network/parse hiccup, not real weather) must not lose its recorded
+    # hazards, or the next time it reports the exact same still-elevated
+    # rain total, the diff below would see it as "new" again and re-send
+    # an alert for rain that happened hours ago (confirmed live, 2026-08-08:
+    # "Rocking Y Ranch" vanished from one cycle's KFDM fetch, dropped out of
+    # active_hazards, then reappeared next cycle and re-triggered rain_today_1.0
+    # even though its total hadn't moved and it hadn't rained in hours).
+    new_active_hazards = dict(active_hazards)
     new_hazards_by_station = {}
     now_utc = datetime.now(timezone.utc)
 
@@ -1016,8 +1025,13 @@ def process_metar_storm(state):
             print(f"[{station}] Skipping -- data too old to be useful for a live storm alert.")
             continue
         hazards = classify_hazards(ob)
+        # This station actually reported fresh data this cycle, so its
+        # memory is fully replaced by what's true right now (clears
+        # resolved momentary hazards like gust/thunderstorm correctly).
         if hazards:
             new_active_hazards[station] = list(hazards.keys())
+        else:
+            new_active_hazards.pop(station, None)
         prev_hazards = set(active_hazards.get(station, []))
         newly_appeared = {k: v for k, v in hazards.items() if k not in prev_hazards}
         newly_appeared = _collapse_rain_tiers(newly_appeared)
