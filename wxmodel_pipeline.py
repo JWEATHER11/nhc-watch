@@ -1485,32 +1485,128 @@ def build_combined_cycle_report(cycle_hour_utc, gfs_scan, ecmwf_scan, ensemble_s
 
     return "\n".join(lines), worth_sending
 
-# Representative coastal/near-coastal points across the Gulf Coast
-# states -- used to flag heavy rainfall potential specifically for TX,
-# LA, MS, AL, and FL. (Restored after an accidental deletion during an
-# earlier rewrite.)
+# Named reference cities across the whole watched region -- Texas
+# through Florida, up the East Coast, and the Central/Southern Plains,
+# per instruction. No longer the actual scan points (see
+# REGION_GRID_POINTS below) -- these now only supply the "near X" label
+# for whichever dense-grid cell comes out on top, since a bare lat/lon
+# isn't readable.
 GULF_COAST_RAIN_POINTS = [
     (29.76, -95.37, "Houston, TX"),
     (30.08, -94.10, "Beaumont, TX"),
     (27.80, -97.40, "Corpus Christi, TX"),
+    (30.27, -97.74, "Austin, TX"),
+    (29.42, -98.49, "San Antonio, TX"),
+    (32.78, -96.80, "Dallas, TX"),
+    (35.22, -101.83, "Amarillo, TX"),
+    (33.58, -101.86, "Lubbock, TX"),
     (35.47, -97.52, "Oklahoma City, OK"),
+    (36.15, -95.99, "Tulsa, OK"),
     (30.23, -93.22, "Lake Charles, LA"),
     (29.95, -90.07, "New Orleans, LA"),
     (30.45, -91.19, "Baton Rouge, LA"),
     (34.75, -92.29, "Little Rock, AR"),
+    (36.07, -94.16, "Fayetteville, AR"),
     (35.15, -90.05, "Memphis, TN"),
+    (36.16, -86.78, "Nashville, TN"),
     (30.69, -88.04, "Mobile, AL"),
+    (32.37, -86.30, "Montgomery, AL"),
     (32.30, -90.18, "Jackson, MS"),
     (30.42, -87.22, "Pensacola, FL"),
     (27.95, -82.46, "Tampa, FL"),
     (30.33, -81.66, "Jacksonville, FL"),
     (25.76, -80.19, "Miami, FL"),
+    (28.54, -81.38, "Orlando, FL"),
+    (30.44, -84.28, "Tallahassee, FL"),
     (32.08, -81.10, "Savannah, GA"),
+    (33.75, -84.39, "Atlanta, GA"),
     (32.78, -79.93, "Charleston, SC"),
+    (34.00, -81.03, "Columbia, SC"),
+    (35.23, -80.84, "Charlotte, NC"),
+    (35.78, -78.64, "Raleigh, NC"),
     (36.85, -76.29, "Norfolk, VA"),
+    (37.54, -77.44, "Richmond, VA"),
 ]
 
 HEAVY_RAIN_THRESHOLD_INCHES = 1.0
+
+
+def _generate_region_grid():
+    """Dense mesh covering the whole watched area -- Texas through
+    Florida, up the East Coast, and the Central/Southern Plains --
+    per instruction ("why is there grid points i want it looking over
+    the whole state"): sampling only ~18-30 named cities could miss
+    real rainfall falling in between them. ~2.5 degree spacing keeps
+    the point count (~66) manageable across 5 separate model fetches
+    per cycle while still being far denser than city-only sampling."""
+    points = []
+    lat = 25.5
+    while lat <= 39.0 + 1e-9:
+        lon = -102.0
+        while lon <= -76.0 + 1e-9:
+            points.append((round(lat, 2), round(lon, 2)))
+            lon += 2.5
+        lat += 2.5
+    return points
+
+
+REGION_GRID_POINTS = _generate_region_grid()
+REGION_GRID_STEP = 2.5
+
+
+def _nearest_named_place(lat, lon):
+    best_name, best_dist = None, None
+    for plat, plon, name in GULF_COAST_RAIN_POINTS:
+        d = (plat - lat) ** 2 + (plon - lon) ** 2
+        if best_dist is None or d < best_dist:
+            best_dist, best_name = d, name
+    return best_name
+
+
+def _grid_neighbors(lat, lon):
+    step = REGION_GRID_STEP
+    return [
+        (round(lat + step, 2), lon), (round(lat - step, 2), lon),
+        (lat, round(lon + step, 2)), (lat, round(lon - step, 2)),
+    ]
+
+
+def _grid_max_with_support(totals, floor_in=0.3, require_support=True):
+    """Highest grid cell. When require_support is True, only trusts it
+    if corroborated by at least one immediate neighbor showing a
+    meaningful fraction of the same value -- an isolated single-cell
+    spike with neighbors near zero reads as a numerical grid artifact
+    in a field that should be spatially smooth (GFS/Euro/Google AI's
+    10-day totals), same protection already used for HRRR's own
+    native-resolution dense-grid checks elsewhere (see
+    _has_neighbor_support in setx_swla_extra.py).
+
+    require_support=False skips that check -- appropriate for HRRR
+    specifically: at this grid's ~2.5-degree (~170mi) synthetic point
+    spacing, "neighbors" aren't remotely adjacent in HRRR's own native
+    ~3km grid, so failing to corroborate there doesn't mean the cell is
+    a numerical artifact -- it just means HRRR is doing exactly what
+    it's built for, resolving a real but spatially small, isolated
+    thunderstorm cell that a coarse 170-mile-spaced check was never
+    going to see confirmed next door. Confirmed live 2026-08-09: a real
+    isolated HRRR-resolved storm near Tampa got filtered out entirely
+    under the same corroboration rule used for the smooth 10-day
+    fields, which would have hidden a genuine local signal.
+
+    Returns (lat, lon, total_in) or (None, None, None)."""
+    if not totals:
+        return None, None, None
+    for (lat, lon), val in sorted(totals.items(), key=lambda kv: -kv[1]):
+        if val < floor_in:
+            break
+        if not require_support:
+            return lat, lon, round(val, 1)
+        neighbor_vals = [totals[n] for n in _grid_neighbors(lat, lon) if n in totals]
+        if not neighbor_vals:
+            continue
+        if max(neighbor_vals) >= max(val * 0.4, floor_in):
+            return lat, lon, round(val, 1)
+    return None, None, None
 
 GULF_STATE_NAMES = {
     "TX": "TEXAS", "OK": "OKLAHOMA", "LA": "LOUISIANA", "AR": "ARKANSAS",
@@ -1566,15 +1662,18 @@ def _wpc_corroboration_for_place(blocks, place_name):
 
 
 def _fetch_rainfall_totals(endpoint):
-    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
-    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
+    """Scans the full dense REGION_GRID_POINTS mesh (not just named
+    cities) and returns {(lat, lon): total_in} -- per instruction, a
+    sparse city list could miss real rainfall between the points."""
+    lat_str = ",".join(str(p[0]) for p in REGION_GRID_POINTS)
+    lon_str = ",".join(str(p[1]) for p in REGION_GRID_POINTS)
     cache_buster = int(time.time())
     url = (
         f"https://api.open-meteo.com/v1/{endpoint}"
         f"?latitude={lat_str}&longitude={lon_str}"
         f"&daily=precipitation_sum&forecast_days=10&timezone=America/Chicago&_cb={cache_buster}"
     )
-    data = _fetch_with_retries_bytes(url, f"GulfCoastRainfall:{endpoint}")
+    data = _fetch_with_retries_bytes(url, f"RegionGrid:{endpoint}")
     if not data:
         return {}
     try:
@@ -1584,19 +1683,21 @@ def _fetch_rainfall_totals(endpoint):
     if not isinstance(points, list):
         return {}
     totals = {}
-    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
+    for point, (lat, lon) in zip(points, REGION_GRID_POINTS):
         try:
             totals_mm = point["daily"]["precipitation_sum"]
         except (KeyError, TypeError):
             continue
         total_in = sum(v for v in totals_mm if v is not None) / 25.4
-        totals[place_name] = round(total_in, 1)
+        totals[(lat, lon)] = round(total_in, 1)
     return totals
 
 
 def _fetch_rainfall_totals_google_ai():
-    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
-    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
+    """Same dense-grid scan as _fetch_rainfall_totals, using Google
+    AI's ensemble-member average at each grid cell."""
+    lat_str = ",".join(str(p[0]) for p in REGION_GRID_POINTS)
+    lon_str = ",".join(str(p[1]) for p in REGION_GRID_POINTS)
     cache_buster = int(time.time())
     url = (
         f"https://ensemble-api.open-meteo.com/v1/ensemble"
@@ -1604,7 +1705,7 @@ def _fetch_rainfall_totals_google_ai():
         f"&daily=precipitation_sum&models=google_weathernext2_ensemble"
         f"&forecast_days=10&timezone=America/Chicago&_cb={cache_buster}"
     )
-    data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:google_ai")
+    data = _fetch_with_retries_bytes(url, "RegionGrid:google_ai")
     if not data:
         return {}
     try:
@@ -1614,7 +1715,7 @@ def _fetch_rainfall_totals_google_ai():
     if not isinstance(points, list):
         return {}
     totals = {}
-    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
+    for point, (lat, lon) in zip(points, REGION_GRID_POINTS):
         daily = point.get("daily", {})
         member_keys = [k for k in daily if k.startswith("precipitation_sum_member")]
         if not member_keys:
@@ -1625,7 +1726,7 @@ def _fetch_rainfall_totals_google_ai():
             member_totals.append(sum(v for v in vals if v is not None))
         if member_totals:
             avg_mm = sum(member_totals) / len(member_totals)
-            totals[place_name] = round(avg_mm / 25.4, 1)
+            totals[(lat, lon)] = round(avg_mm / 25.4, 1)
     return totals
 
 
@@ -1633,11 +1734,10 @@ def _fetch_rainfall_totals_hrrr_by_day():
     """HRRR only extends ~48h, so unlike the 10-day-summed models above,
     today and tomorrow are tracked as two separate single-day totals --
     per instruction, HRRR's own highest total specifically for today
-    and specifically for tomorrow, across the same wide Gulf Coast/
-    Southern Plains/Southeast domain (GULF_COAST_RAIN_POINTS already
-    covers TX/OK/LA/AR/TN/MS/AL/FL/GA/SC/VA)."""
-    lat_str = ",".join(str(p[0]) for p in GULF_COAST_RAIN_POINTS)
-    lon_str = ",".join(str(p[1]) for p in GULF_COAST_RAIN_POINTS)
+    and specifically for tomorrow, across the same dense region-wide
+    grid as every other model here."""
+    lat_str = ",".join(str(p[0]) for p in REGION_GRID_POINTS)
+    lon_str = ",".join(str(p[1]) for p in REGION_GRID_POINTS)
     cache_buster = int(time.time())
     url = (
         f"https://api.open-meteo.com/v1/forecast"
@@ -1645,7 +1745,7 @@ def _fetch_rainfall_totals_hrrr_by_day():
         f"&daily=precipitation_sum&models=ncep_hrrr_conus"
         f"&forecast_days=2&timezone=America/Chicago&_cb={cache_buster}"
     )
-    data = _fetch_with_retries_bytes(url, "GulfCoastRainfall:hrrr")
+    data = _fetch_with_retries_bytes(url, "RegionGrid:hrrr")
     if not data:
         return {}, {}
     try:
@@ -1655,15 +1755,15 @@ def _fetch_rainfall_totals_hrrr_by_day():
     if not isinstance(points, list):
         return {}, {}
     today_totals, tomorrow_totals = {}, {}
-    for point, (_, _, place_name) in zip(points, GULF_COAST_RAIN_POINTS):
+    for point, (lat, lon) in zip(points, REGION_GRID_POINTS):
         try:
             totals_mm = point["daily"]["precipitation_sum"]
         except (KeyError, TypeError):
             continue
         if len(totals_mm) > 0 and totals_mm[0] is not None:
-            today_totals[place_name] = round(totals_mm[0] / 25.4, 1)
+            today_totals[(lat, lon)] = round(totals_mm[0] / 25.4, 1)
         if len(totals_mm) > 1 and totals_mm[1] is not None:
-            tomorrow_totals[place_name] = round(totals_mm[1] / 25.4, 1)
+            tomorrow_totals[(lat, lon)] = round(totals_mm[1] / 25.4, 1)
     return today_totals, tomorrow_totals
 
 
@@ -1682,20 +1782,27 @@ def fetch_gulf_coast_rainfall():
     for model_name, totals in model_totals.items():
         if not totals:
             continue
-        heaviest_place = max(totals, key=lambda p: totals[p])
-        heaviest_val = totals[heaviest_place]
-        if heaviest_val >= HEAVY_RAIN_THRESHOLD_INCHES:
-            entry = {"place": heaviest_place, "total_in": heaviest_val}
-            if not wpc_fetch_attempted:
-                try:
-                    wpc_blocks = _fetch_wpc_day_blocks()
-                except Exception as e:
-                    print(f"[Gulf Coast Watch] WPC corroboration unavailable (non-fatal): {e}")
-                wpc_fetch_attempted = True
-            wpc_note = _wpc_corroboration_for_place(wpc_blocks, heaviest_place)
-            if wpc_note:
-                entry["wpc_note"] = wpc_note
-            results[model_name] = entry
+        # Grid-cell max requires neighbor corroboration for the smooth
+        # 10-day fields (GFS/Euro/Google AI), but not for HRRR -- see
+        # _grid_max_with_support for why. Then gets labeled by whichever
+        # named city is closest to that cell -- the dense grid finds the
+        # rain, the named-city list just makes the result readable.
+        require_support = not model_name.startswith("HRRR")
+        lat, lon, heaviest_val = _grid_max_with_support(totals, floor_in=HEAVY_RAIN_THRESHOLD_INCHES, require_support=require_support)
+        if lat is None:
+            continue
+        heaviest_place = _nearest_named_place(lat, lon)
+        entry = {"place": heaviest_place, "total_in": heaviest_val}
+        if not wpc_fetch_attempted:
+            try:
+                wpc_blocks = _fetch_wpc_day_blocks()
+            except Exception as e:
+                print(f"[Gulf Coast Watch] WPC corroboration unavailable (non-fatal): {e}")
+            wpc_fetch_attempted = True
+        wpc_note = _wpc_corroboration_for_place(wpc_blocks, heaviest_place)
+        if wpc_note:
+            entry["wpc_note"] = wpc_note
+        results[model_name] = entry
     if not results:
         return None
     return results
