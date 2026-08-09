@@ -108,10 +108,14 @@ def graphic_url(day_num):
     now_utc_str = time.strftime("%Y-%m-%d %H%M", time.gmtime())
     encoded_valid = urllib.parse.quote(now_utc_str)
     cache_buster = int(time.time())
+    # Confirmed live 2026-08-08: this used a bare "&_cb=" with no "?" to
+    # start the query string, which IEM's plot server 404s on every
+    # time -- the graphic has never actually sent. Fixed to a real
+    # query string.
     return (
         f"https://mesonet.agron.iastate.edu/plotting/auto/plot/220/"
         f"which:{which}::cat:any::t:state::csector:conus::"
-        f"valid:{encoded_valid}::dpi:100.png&_cb={cache_buster}"
+        f"valid:{encoded_valid}::dpi:100.png?_cb={cache_buster}"
     )
 
 
