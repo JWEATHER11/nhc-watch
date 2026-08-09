@@ -176,6 +176,32 @@ def parse_areas(text):
     return areas
 
 
+def region_geo_context(region):
+    """Short plain-English location context for an NHC outlook region
+    name, so a non-meteorologist can tell at a glance how far away (and
+    from what) a monitored area actually is. NHC's own region names
+    ("Central Tropical Atlantic") assume basin geography knowledge --
+    in particular, whether something is in the MDR (Main Development
+    Region: the open tropical Atlantic between Africa and the Lesser
+    Antilles, where most long-track hurricanes start, typically a week
+    or more of travel time from the Gulf/Caribbean) versus already in
+    the Gulf or Caribbean and much closer to home."""
+    r = region.lower()
+    if "gulf" in r:
+        return "Gulf of Mexico -- close to home"
+    if "caribbean" in r:
+        if "western" in r or "yucatan" in r or "northwestern" in r:
+            return "western Caribbean, near Mexico/Central America"
+        return "Caribbean Sea"
+    if "windward" in r or "lesser antilles" in r:
+        return "Lesser Antilles / eastern Caribbean approach"
+    if "bahamas" in r:
+        return "Bahamas, western Atlantic"
+    if "atlantic" in r:
+        return "MDR -- open tropical Atlantic, far out, no immediate US threat"
+    return ""
+
+
 def no_development_expected(text):
     return bool(re.search(r"Tropical cyclone formation is not expected during the next 7 days", text, re.I))
 
@@ -280,7 +306,9 @@ def build_message(text):
         return "\n".join(parts)
 
     for area in areas:
-        parts.append(f"🌀 {area['number']}. {area['region']}:")
+        geo = region_geo_context(area["region"])
+        geo_suffix = f" ({geo})" if geo else ""
+        parts.append(f"🌀 {area['number']}. {area['region']}{geo_suffix}:")
         parts.append(area["description"])
         parts.append(f"⏱️ 48-hr formation chance: {area['chance_48h_category']} ({area['chance_48h_pct']}%)")
         parts.append(f"📅 7-day formation chance: {area['chance_7day_category']} ({area['chance_7day_pct']}%)")

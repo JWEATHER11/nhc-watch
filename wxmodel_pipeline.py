@@ -374,10 +374,14 @@ def process_quiet_basin(state):
         print(f"[quiet-basin] NHC outlook areas unavailable (non-fatal): {e}")
 
     if areas:
-        area_bits = [f"{a['region']} ({a['chance_7day_pct']}% in 7 days)" for a in areas]
+        area_bits = []
+        for a in areas:
+            geo = _nhc.region_geo_context(a["region"])
+            geo_suffix = f" -- {geo}" if geo else ""
+            area_bits.append(f"{a['region']} ({a['chance_7day_pct']}% in 7 days){geo_suffix}")
         message = (
             "Tropical Atlantic, Caribbean, and Gulf of Mexico -- no named storms yet.\n\n"
-            f"NHC is watching: {', '.join(area_bits)}"
+            f"NHC is watching: {'; '.join(area_bits)}"
         )
     else:
         message = (
