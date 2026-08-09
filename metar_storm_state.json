@@ -64,10 +64,15 @@
     ],
     "Deridder -- 73.5mi from Beaumont (KLADERID103)": [
       "rain_today_1.0"
+    ],
+    "LCH": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-09T22:22:19Z",
-    "active_stations": []
+    "last_sent_utc": "2026-08-09T23:58:48Z",
+    "active_stations": [
+      "LCH"
+    ]
   }
 }
