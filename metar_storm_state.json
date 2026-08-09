@@ -9,9 +9,6 @@
     "Gulf Coast Bug Zappers": [
       "rain_today_1.0"
     ],
-    "Beaumont -- 11.4mi from Beaumont (KTXBEAUM236)": [
-      "rain_today_1.0"
-    ],
     "Burrell Cove -- 14.4mi from Beaumont (KTXBEAUM12)": [
       "rain_today_1.0"
     ],
@@ -33,8 +30,8 @@
     "Wallisville -- 40.7mi from Beaumont (KTXWALLI34)": [
       "gust"
     ],
-    "Village Mills -- 35.4mi from Beaumont (KTXVILLA11)": [
-      "gust"
+    "DWH": [
+      "thunderstorm"
     ]
   }
 }
