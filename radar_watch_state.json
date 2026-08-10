@@ -4,11 +4,11 @@
     "Houston",
     "Lake Charles"
   ],
-  "was_severe": false,
+  "was_severe": true,
   "max_dbz_history": [
+    50.0,
     42.5,
     44.5,
-    41.5,
-    45.5
+    41.5
   ]
 }
