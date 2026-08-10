@@ -147,6 +147,9 @@
     ],
     "EFD": [
       "thunderstorm"
+    ],
+    "SGR": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -161,7 +164,8 @@
       "JAS",
       "LCH",
       "LFT",
-      "LVJ"
+      "LVJ",
+      "SGR"
     ]
   }
 }
