@@ -122,9 +122,6 @@
     "Baytown -- 45.9mi from Beaumont (KTXBAYTO157)": [
       "rain_today_1.0"
     ],
-    "CXO": [
-      "thunderstorm"
-    ],
     "DRI": [
       "thunderstorm"
     ],
@@ -160,7 +157,6 @@
     "last_sent_utc": "2026-08-10T19:26:15Z",
     "active_stations": [
       "3R7",
-      "CXO",
       "DRI",
       "DWH",
       "EFD",
