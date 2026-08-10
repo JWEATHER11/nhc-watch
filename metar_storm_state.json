@@ -145,6 +145,9 @@
     ],
     "CXO": [
       "thunderstorm"
+    ],
+    "EFD": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -153,6 +156,7 @@
       "3R7",
       "CXO",
       "DWH",
+      "EFD",
       "HOU",
       "IAH",
       "LVJ",
