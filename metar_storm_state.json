@@ -110,9 +110,6 @@
     "Lake Charles -- 55.7mi from Beaumont (KLALAKEC266)": [
       "rain_today_1.0"
     ],
-    "3R7": [
-      "thunderstorm"
-    ],
     "LVJ": [
       "thunderstorm"
     ],
@@ -127,12 +124,14 @@
     ],
     "Ragley -- 59.7mi from Beaumont (KLARAGLE11)": [
       "rain_today_1.0"
+    ],
+    "Baytown -- 45.9mi from Beaumont (KTXBAYTO157)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T18:24:59Z",
     "active_stations": [
-      "3R7",
       "CWF",
       "DWH",
       "JAS",
