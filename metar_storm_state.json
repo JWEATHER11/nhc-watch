@@ -53,9 +53,6 @@
     "Vincent MS": [
       "rain_today_1.0"
     ],
-    "LCH": [
-      "thunderstorm"
-    ],
     "Mauriceville": [
       "rain_today_1.0"
     ],
@@ -123,15 +120,22 @@
     ],
     "Lake Charles -- 55.7mi from Beaumont (KLALAKEC266)": [
       "rain_today_1.0"
+    ],
+    "3R7": [
+      "thunderstorm"
+    ],
+    "CXO": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T17:23:45Z",
     "active_stations": [
+      "3R7",
       "BMT",
       "CWF",
+      "CXO",
       "JAS",
-      "LCH",
       "ORG",
       "SGR",
       "T78"
