@@ -11,13 +11,17 @@
     ],
     "Orange -- 12.9mi from Beaumont (KTXORANG327)": [
       "rain_today_1.0"
+    ],
+    "T78": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T15:21:06Z",
     "active_stations": [
       "BMT",
-      "BPT"
+      "BPT",
+      "T78"
     ]
   }
 }
