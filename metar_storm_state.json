@@ -1,7 +1,13 @@
 {
-  "active_hazards": {},
+  "active_hazards": {
+    "GLS": [
+      "thunderstorm"
+    ]
+  },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-09T23:58:48Z",
-    "active_stations": []
+    "last_sent_utc": "2026-08-10T14:35:14Z",
+    "active_stations": [
+      "GLS"
+    ]
   }
 }
