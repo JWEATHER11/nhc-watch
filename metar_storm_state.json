@@ -95,7 +95,6 @@
       "rain_today_1.0"
     ],
     "Beaumont -- 2.5mi from Beaumont (KTXBEAUM341)": [
-      "gust",
       "rain_today_1.0"
     ],
     "Silsbee -- 17.5mi from Beaumont (KTXSILSB71)": [
@@ -145,6 +144,9 @@
     ],
     "LCH": [
       "thunderstorm"
+    ],
+    "EFD": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -154,6 +156,7 @@
       "CXO",
       "DRI",
       "DWH",
+      "EFD",
       "HOU",
       "JAS",
       "LCH",
