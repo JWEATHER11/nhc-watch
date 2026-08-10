@@ -27,9 +27,6 @@
       "rain_today_2.0",
       "rain_today_3.0"
     ],
-    "LVJ": [
-      "thunderstorm"
-    ],
     "Texas City -- 73.1mi from Beaumont (KTXTEXAS1167)": [
       "rain_today_1.0"
     ],
@@ -44,11 +41,10 @@
     ]
   },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-10T15:21:06Z",
+    "last_sent_utc": "2026-08-10T16:22:27Z",
     "active_stations": [
       "BMT",
       "BPT",
-      "LVJ",
       "ORG",
       "T78"
     ]
