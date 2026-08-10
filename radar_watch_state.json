@@ -2,9 +2,9 @@
   "active_storm_cities": [],
   "was_severe": false,
   "max_dbz_history": [
+    45.0,
     49.5,
     45.0,
-    41.5,
-    45.5
+    41.5
   ]
 }
