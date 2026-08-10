@@ -118,9 +118,6 @@
     "Longville -- 67.6mi from Beaumont (KLALONGV10)": [
       "rain_today_1.0"
     ],
-    "HOU": [
-      "thunderstorm"
-    ],
     "Texas City -- 72.2mi from Beaumont (KTXTEXAS1184)": [
       "rain_today_1.0"
     ],
@@ -138,6 +135,9 @@
     ],
     "Sulphur -- 49.1mi from Beaumont (KLASULPH116)": [
       "rain_today_1.0"
+    ],
+    "Liberty -- 38.2mi from Beaumont (KTXLIBER426)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
@@ -145,7 +145,6 @@
     "active_stations": [
       "DWH",
       "EFD",
-      "HOU",
       "IAH"
     ]
   }
