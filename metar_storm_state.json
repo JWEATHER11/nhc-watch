@@ -125,9 +125,6 @@
     "Baytown -- 45.9mi from Beaumont (KTXBAYTO157)": [
       "rain_today_1.0"
     ],
-    "BMT": [
-      "thunderstorm"
-    ],
     "CXO": [
       "thunderstorm"
     ],
@@ -139,17 +136,27 @@
     ],
     "Longville -- 67.6mi from Beaumont (KLALONGV10)": [
       "rain_today_1.0"
+    ],
+    "HOU": [
+      "thunderstorm"
+    ],
+    "3R7": [
+      "thunderstorm"
+    ],
+    "LCH": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T18:24:59Z",
     "active_stations": [
-      "BMT",
-      "CWF",
+      "3R7",
       "CXO",
       "DRI",
       "DWH",
+      "HOU",
       "JAS",
+      "LCH",
       "LFT",
       "LVJ"
     ]
