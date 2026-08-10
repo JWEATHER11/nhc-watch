@@ -127,9 +127,6 @@
     "Texas City -- 73.5mi from Beaumont (KTXTEXAS1174)": [
       "rain_today_1.0"
     ],
-    "EFD": [
-      "thunderstorm"
-    ],
     "IAH": [
       "thunderstorm"
     ],
@@ -144,7 +141,6 @@
     "last_sent_utc": "2026-08-10T21:28:43Z",
     "active_stations": [
       "DWH",
-      "EFD",
       "IAH"
     ]
   }
