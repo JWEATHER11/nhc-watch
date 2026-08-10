@@ -1,12 +1,13 @@
 {
   "active_storm_cities": [
-    "Beaumont/Port Arthur"
+    "Beaumont/Port Arthur",
+    "Lake Charles"
   ],
-  "was_severe": false,
+  "was_severe": true,
   "max_dbz_history": [
+    56.5,
     41.5,
     39.0,
-    35.5,
-    55.0
+    35.5
   ]
 }
