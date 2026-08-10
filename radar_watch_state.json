@@ -1,12 +1,10 @@
 {
-  "active_storm_cities": [
-    "Houston"
-  ],
+  "active_storm_cities": [],
   "was_severe": false,
   "max_dbz_history": [
+    43.0,
     38.5,
     36.0,
-    45.0,
-    49.5
+    45.0
   ]
 }
