@@ -3,15 +3,9 @@
     "Texas City -- 65.7mi from Beaumont (KTXTEXAS1191)": [
       "rain_today_1.0"
     ],
-    "BMT": [
-      "thunderstorm"
-    ],
     "Orange -- 12.9mi from Beaumont (KTXORANG327)": [
       "rain_today_1.0",
       "rain_today_2.0"
-    ],
-    "T78": [
-      "thunderstorm"
     ],
     "ORG": [
       "thunderstorm"
@@ -128,19 +122,25 @@
     ],
     "LFT": [
       "thunderstorm"
+    ],
+    "DWH": [
+      "thunderstorm"
+    ],
+    "JAS": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-10T17:23:45Z",
+    "last_sent_utc": "2026-08-10T18:24:59Z",
     "active_stations": [
       "3R7",
-      "BMT",
       "CWF",
+      "DWH",
+      "JAS",
       "LFT",
       "LVJ",
       "ORG",
-      "SGR",
-      "T78"
+      "SGR"
     ]
   }
 }
