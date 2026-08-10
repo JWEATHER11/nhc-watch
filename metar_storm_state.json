@@ -103,9 +103,6 @@
     "Lake Charles -- 55.7mi from Beaumont (KLALAKEC266)": [
       "rain_today_1.0"
     ],
-    "LFT": [
-      "thunderstorm"
-    ],
     "DWH": [
       "thunderstorm"
     ],
@@ -151,7 +148,6 @@
       "DWH",
       "HOU",
       "IAH",
-      "LFT",
       "LVJ",
       "SGR"
     ]
