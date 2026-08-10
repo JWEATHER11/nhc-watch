@@ -53,6 +53,27 @@
     ],
     "Vincent MS": [
       "rain_today_1.0"
+    ],
+    "LFT": [
+      "thunderstorm"
+    ],
+    "LCH": [
+      "thunderstorm"
+    ],
+    "Mauriceville": [
+      "rain_today_1.0"
+    ],
+    "Sallie Curtis ES": [
+      "rain_today_1.0"
+    ],
+    "Beaumont -- 2.3mi from Beaumont (KTXBEAUM345)": [
+      "rain_today_1.0"
+    ],
+    "Calder Terrace -- 2.4mi from Beaumont (KTXBEAUM211)": [
+      "rain_today_1.0"
+    ],
+    "Mauriceville -- 17.2mi from Beaumont (KTXORANG252)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
@@ -61,6 +82,8 @@
       "BMT",
       "BPT",
       "JAS",
+      "LCH",
+      "LFT",
       "ORG",
       "SGR",
       "T78"
