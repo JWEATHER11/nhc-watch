@@ -26,10 +26,17 @@
     ],
     "Texas City -- 72.1mi from Beaumont (KTXTEXAS1194)": [
       "rain_today_1.0",
-      "rain_today_2.0"
+      "rain_today_2.0",
+      "rain_today_3.0"
     ],
     "LVJ": [
       "thunderstorm"
+    ],
+    "Texas City -- 73.1mi from Beaumont (KTXTEXAS1167)": [
+      "rain_today_1.0"
+    ],
+    "Baytown -- 44.9mi from Beaumont (KTXBAYTO265)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
