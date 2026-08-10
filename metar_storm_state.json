@@ -128,9 +128,6 @@
     "3R7": [
       "thunderstorm"
     ],
-    "EFD": [
-      "thunderstorm"
-    ],
     "Texas City -- 72.2mi from Beaumont (KTXTEXAS1184)": [
       "rain_today_1.0"
     ],
@@ -142,17 +139,20 @@
     ],
     "SGR": [
       "thunderstorm"
+    ],
+    "LVJ": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-10T19:26:15Z",
+    "last_sent_utc": "2026-08-10T20:27:35Z",
     "active_stations": [
       "3R7",
       "DWH",
-      "EFD",
       "HOU",
       "IAH",
       "LFT",
+      "LVJ",
       "SGR"
     ]
   }
