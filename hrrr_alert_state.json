@@ -1,50 +1,50 @@
 {
   "last_alerted": {
-    "coverage_pct": 7,
-    "max_total_in": 3.7,
+    "coverage_pct": 2,
+    "max_total_in": 7.8,
     "max_near": "Beaumont/Port Arthur",
     "max_day_label": "today",
-    "onset_hour_idx": 40,
-    "onset_hour_str": "2026-08-10T11:00:00-05:00",
-    "max_gust_mph": 35.6,
-    "max_gust_near": "Houston",
-    "max_gust_hour_str": "2026-08-10T15:00:00-05:00",
-    "run_cycle_str": "2026-08-09T19:00:00+00:00",
+    "onset_hour_idx": 18,
+    "onset_hour_str": "2026-08-10T13:00:00-05:00",
+    "max_gust_mph": 32.2,
+    "max_gust_near": "Lake Charles",
+    "max_gust_hour_str": "2026-08-10T16:00:00-05:00",
+    "run_cycle_str": "2026-08-10T11:00:00+00:00",
     "href": {
-      "cycle": "2026-08-09T12:00:00+00:00",
+      "cycle": "2026-08-10T06:00:00+00:00",
       "day1": {
-        "Houston": 94,
-        "Beaumont": 100,
-        "Port Arthur": 98,
-        "Jasper": 62,
+        "Houston": 99,
+        "Beaumont": 93,
+        "Port Arthur": 88,
+        "Jasper": 69,
         "Lake Charles": 94
       },
       "day2": {
-        "Houston": 96,
-        "Beaumont": 94,
-        "Port Arthur": 100,
-        "Jasper": 72,
-        "Lake Charles": 100
+        "Houston": 42,
+        "Beaumont": 62,
+        "Port Arthur": 72,
+        "Jasper": 16,
+        "Lake Charles": 74
       }
     }
   },
   "href_cache": {
-    "fetched_at": "2026-08-09T20:10:10.548841+00:00",
+    "fetched_at": "2026-08-10T13:07:50.288395+00:00",
     "data": {
-      "cycle": "2026-08-09T12:00:00+00:00",
+      "cycle": "2026-08-10T06:00:00+00:00",
       "day1": {
-        "Houston": 94,
-        "Beaumont": 100,
-        "Port Arthur": 98,
-        "Jasper": 62,
+        "Houston": 99,
+        "Beaumont": 93,
+        "Port Arthur": 88,
+        "Jasper": 69,
         "Lake Charles": 94
       },
       "day2": {
-        "Houston": 96,
-        "Beaumont": 94,
-        "Port Arthur": 100,
-        "Jasper": 72,
-        "Lake Charles": 100
+        "Houston": 42,
+        "Beaumont": 62,
+        "Port Arthur": 72,
+        "Jasper": 16,
+        "Lake Charles": 74
       }
     }
   }
