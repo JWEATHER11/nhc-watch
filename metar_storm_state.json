@@ -14,6 +14,9 @@
     ],
     "T78": [
       "thunderstorm"
+    ],
+    "ORG": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -21,6 +24,7 @@
     "active_stations": [
       "BMT",
       "BPT",
+      "ORG",
       "T78"
     ]
   }
