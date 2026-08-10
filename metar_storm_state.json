@@ -125,6 +125,9 @@
     ],
     "LVJ": [
       "thunderstorm"
+    ],
+    "LFT": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -133,6 +136,7 @@
       "3R7",
       "BMT",
       "CWF",
+      "LFT",
       "LVJ",
       "ORG",
       "SGR",
