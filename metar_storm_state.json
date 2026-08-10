@@ -120,6 +120,9 @@
     ],
     "Silsbee -- 17.5mi from Beaumont (KTXSILSB71)": [
       "rain_today_1.0"
+    ],
+    "Lake Charles -- 56.3mi from Beaumont (KLALAKEC61)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
