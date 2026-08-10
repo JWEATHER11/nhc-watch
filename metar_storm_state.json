@@ -41,7 +41,8 @@
       "rain_today_1.0"
     ],
     "SGR": [
-      "thunderstorm"
+      "thunderstorm",
+      "heavy_rain"
     ],
     "High Island": [
       "rain_today_1.0"
@@ -112,6 +113,15 @@
       "rain_today_1.0"
     ],
     "Orange -- 14.5mi from Beaumont (KTXORANG138)": [
+      "rain_today_1.0"
+    ],
+    "Winnie": [
+      "rain_today_1.0"
+    ],
+    "Stowell -- 24.4mi from Beaumont (KTXSTOWE3)": [
+      "rain_today_1.0"
+    ],
+    "Beaumont -- 2.5mi from Beaumont (KTXBEAUM341)": [
       "rain_today_1.0"
     ]
   },
