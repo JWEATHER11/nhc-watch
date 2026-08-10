@@ -82,6 +82,18 @@
     ],
     "Bevil Oaks": [
       "rain_today_1.0"
+    ],
+    "CWF": [
+      "thunderstorm"
+    ],
+    "Holly Beach": [
+      "rain_today_1.0"
+    ],
+    "Holly Beach -- 45.5mi from Beaumont (KLACAMER19)": [
+      "rain_today_1.0"
+    ],
+    "Orange -- 18.4mi from Beaumont (KTXORANG120)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
@@ -89,6 +101,7 @@
     "active_stations": [
       "BMT",
       "BPT",
+      "CWF",
       "JAS",
       "LCH",
       "ORG",
