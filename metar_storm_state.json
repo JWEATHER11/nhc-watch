@@ -107,7 +107,8 @@
       "rain_today_1.0"
     ],
     "LVJ": [
-      "thunderstorm"
+      "thunderstorm",
+      "heavy_rain"
     ],
     "LFT": [
       "thunderstorm"
@@ -153,10 +154,13 @@
     ],
     "Texas City -- 72.2mi from Beaumont (KTXTEXAS1184)": [
       "rain_today_1.0"
+    ],
+    "Texas City -- 73.2mi from Beaumont (KTXTEXAS1128)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-10T18:24:59Z",
+    "last_sent_utc": "2026-08-10T19:26:15Z",
     "active_stations": [
       "3R7",
       "CXO",
