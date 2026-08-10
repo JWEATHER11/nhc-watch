@@ -1,6 +1,22 @@
 {
   "trend_snapshots": [
     {
+      "short_rain_in": 0.3,
+      "medium_rain_in": 0.1,
+      "coverage_pct": 40,
+      "medium_coverage_pct": 0,
+      "long_coverage_pct": 0,
+      "temp_drop_f": 2.7,
+      "front_signal": false,
+      "short_temp_f": 91.0,
+      "medium_temp_f": 92.5,
+      "temp_5_7_f": 93.3,
+      "temp_7_10_f": 95.4,
+      "avg_dewpoint_f": 75.5,
+      "tropical_lowest_mb": 1007.7,
+      "tropical_wind_mph": 17
+    },
+    {
       "short_rain_in": 0.4,
       "medium_rain_in": 0.0,
       "coverage_pct": 60,
@@ -47,22 +63,6 @@
       "avg_dewpoint_f": 75.6,
       "tropical_lowest_mb": 1007.1,
       "tropical_wind_mph": 9
-    },
-    {
-      "short_rain_in": 0.4,
-      "medium_rain_in": 0.0,
-      "coverage_pct": 20,
-      "medium_coverage_pct": 0,
-      "long_coverage_pct": 0,
-      "temp_drop_f": 7.0,
-      "front_signal": false,
-      "short_temp_f": 88.7,
-      "medium_temp_f": 92.8,
-      "temp_5_7_f": 93.2,
-      "temp_7_10_f": 94.0,
-      "avg_dewpoint_f": 75.6,
-      "tropical_lowest_mb": 1007.1,
-      "tropical_wind_mph": 9
     }
   ],
   "ndfd_send_day": "2026-08-10",
@@ -71,10 +71,9 @@
     "NWS Houston": 0.0,
     "NWS Lake Charles": 0.3
   },
-  "last_combined_cycle": "2026-08-10T00",
+  "last_combined_cycle": "2026-08-10T06",
   "genesis_trend_history": [
     [
-      "Caribbean Sea",
       "Off SE US Coast",
       "Open Tropical Atlantic",
       "Subtropical Atlantic"
@@ -82,7 +81,8 @@
     [
       "Caribbean Sea",
       "Off SE US Coast",
-      "Open Tropical Atlantic"
+      "Open Tropical Atlantic",
+      "Subtropical Atlantic"
     ],
     [
       "Caribbean Sea",
