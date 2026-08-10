@@ -127,9 +127,6 @@
     "Texas City -- 73.2mi from Beaumont (KTXTEXAS1128)": [
       "rain_today_1.0"
     ],
-    "LVJ": [
-      "thunderstorm"
-    ],
     "Texas City -- 73.5mi from Beaumont (KTXTEXAS1174)": [
       "rain_today_1.0"
     ],
@@ -144,6 +141,9 @@
     ],
     "BMT": [
       "thunderstorm"
+    ],
+    "IAH": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -154,7 +154,7 @@
       "DWH",
       "EFD",
       "HOU",
-      "LVJ",
+      "IAH",
       "T78"
     ]
   }
