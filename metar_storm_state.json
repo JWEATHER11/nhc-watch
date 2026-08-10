@@ -31,10 +31,6 @@
     "Texas City -- 70.7mi from Beaumont (KTXTEXAS1069)": [
       "rain_today_1.0"
     ],
-    "SGR": [
-      "thunderstorm",
-      "heavy_rain"
-    ],
     "High Island": [
       "rain_today_1.0"
     ],
@@ -128,6 +124,9 @@
     ],
     "JAS": [
       "thunderstorm"
+    ],
+    "Ragley -- 59.7mi from Beaumont (KLARAGLE11)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
@@ -139,8 +138,7 @@
       "JAS",
       "LFT",
       "LVJ",
-      "ORG",
-      "SGR"
+      "ORG"
     ]
   }
 }
