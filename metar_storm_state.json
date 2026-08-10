@@ -7,9 +7,6 @@
       "rain_today_1.0",
       "rain_today_2.0"
     ],
-    "ORG": [
-      "thunderstorm"
-    ],
     "Bayou Din": [
       "rain_today_1.0",
       "rain_today_2.0"
@@ -127,17 +124,31 @@
     ],
     "Baytown -- 45.9mi from Beaumont (KTXBAYTO157)": [
       "rain_today_1.0"
+    ],
+    "BMT": [
+      "thunderstorm"
+    ],
+    "CXO": [
+      "thunderstorm"
+    ],
+    "DRI": [
+      "thunderstorm"
+    ],
+    "Longville -- 61.0mi from Beaumont (KLALONGV9)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T18:24:59Z",
     "active_stations": [
+      "BMT",
       "CWF",
+      "CXO",
+      "DRI",
       "DWH",
       "JAS",
       "LFT",
-      "LVJ",
-      "ORG"
+      "LVJ"
     ]
   }
 }
