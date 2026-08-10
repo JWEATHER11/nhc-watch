@@ -141,11 +141,15 @@
     ],
     "T78": [
       "thunderstorm"
+    ],
+    "BMT": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T20:27:35Z",
     "active_stations": [
+      "BMT",
       "CXO",
       "DWH",
       "EFD",
