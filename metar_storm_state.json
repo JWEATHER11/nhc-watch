@@ -2,6 +2,9 @@
   "active_hazards": {
     "GLS": [
       "thunderstorm"
+    ],
+    "Texas City -- 65.7mi from Beaumont (KTXTEXAS1191)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
