@@ -97,9 +97,6 @@
     "Orange -- 18.4mi from Beaumont (KTXORANG120)": [
       "rain_today_1.0"
     ],
-    "LFT": [
-      "thunderstorm"
-    ],
     "Mauriceville -- 17.0mi from Beaumont (KTXORANG285)": [
       "rain_today_1.0"
     ],
@@ -120,6 +117,9 @@
     ],
     "Beaumont -- 2.5mi from Beaumont (KTXBEAUM341)": [
       "rain_today_1.0"
+    ],
+    "Silsbee -- 17.5mi from Beaumont (KTXSILSB71)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
@@ -130,7 +130,6 @@
       "CWF",
       "JAS",
       "LCH",
-      "LFT",
       "ORG",
       "SGR",
       "T78"
