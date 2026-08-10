@@ -132,15 +132,13 @@
       "rain_today_1.0"
     ],
     "HOU": [
-      "thunderstorm"
+      "thunderstorm",
+      "heavy_rain"
     ],
     "3R7": [
       "thunderstorm"
     ],
     "EFD": [
-      "thunderstorm"
-    ],
-    "SGR": [
       "thunderstorm"
     ],
     "Texas City -- 72.2mi from Beaumont (KTXTEXAS1184)": [
@@ -163,8 +161,7 @@
       "HOU",
       "IAH",
       "LFT",
-      "LVJ",
-      "SGR"
+      "LVJ"
     ]
   }
 }
