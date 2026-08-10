@@ -103,9 +103,6 @@
     "Mauriceville -- 17.0mi from Beaumont (KTXORANG285)": [
       "rain_today_1.0"
     ],
-    "3R7": [
-      "thunderstorm"
-    ],
     "Tolbert Ranch": [
       "rain_today_1.0"
     ],
@@ -128,7 +125,6 @@
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T17:23:45Z",
     "active_stations": [
-      "3R7",
       "BMT",
       "BPT",
       "CWF",
