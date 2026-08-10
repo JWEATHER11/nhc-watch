@@ -54,6 +54,7 @@ NHC_URLS = {
 
 STATE_FILE = Path(__file__).parent / "pipeline_state.json"
 CENTRAL_UTC_OFFSET = 5  # CDT (UTC-5). Change to 6 for CST (winter).
+FETCH_FAILURE_ALERT_THROTTLE_MIN = 30
 
 MAX_ATTEMPTS = 2  # reduced from 3 -- speed, matches wxmodel_pipeline.py fix
 RETRY_DELAY_SEC = 2  # reduced from 5 -- speed, matches wxmodel_pipeline.py fix
@@ -648,8 +649,21 @@ def main():
     # --- Fetch the Public Advisory and check for a new one ---
     tcp_text, tcp_source = fetch_product("TCP")
     if not tcp_text:
-        send_failure_alert("Fetching Public Advisory", "Both IEM and NHC failed")
+        # Confirmed live 2026-08-10: an IEM outage caused this to fire a
+        # fresh Telegram alert every single 25s loop iteration with zero
+        # throttling -- dozens/hundreds of duplicate failure messages.
+        # Now only alerts once per throttle window.
+        now = time.time()
+        last_alert = state.get("last_fetch_failure_alert_utc")
+        if last_alert is None or (now - last_alert) >= FETCH_FAILURE_ALERT_THROTTLE_MIN * 60:
+            send_failure_alert("Fetching Public Advisory", "Both IEM and NHC failed")
+            state["last_fetch_failure_alert_utc"] = now
+            save_state(state)
+        else:
+            print(f"Fetch failed again, but throttled -- already alerted {int((now - last_alert) / 60)} min ago.")
         sys.exit(1)
+    if state.pop("last_fetch_failure_alert_utc", None) is not None:
+        save_state(state)
     print(f"TCP fetched from {tcp_source}")
 
     header = tcp_header(tcp_text)

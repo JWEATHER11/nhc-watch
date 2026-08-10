@@ -318,14 +318,31 @@ def build_message(text):
     return "\n".join(parts).rstrip()
 
 
+FETCH_FAILURE_ALERT_THROTTLE_MIN = 30
+
+
 def main():
+    state = load_state()
     text, source = fetch_outlook()
     if not text:
-        send_failure_alert("Fetching Tropical Weather Outlook", "Both IEM and NHC failed")
+        # Confirmed live 2026-08-10: IEM was down for hours and this used
+        # to fire a fresh Telegram alert every single 25s loop iteration
+        # with zero throttling -- hundreds of identical "Both IEM and NHC
+        # failed" messages. Now only alerts once per throttle window.
+        now = time.time()
+        last_alert = state.get("last_fetch_failure_alert_utc")
+        if last_alert is None or (now - last_alert) >= FETCH_FAILURE_ALERT_THROTTLE_MIN * 60:
+            send_failure_alert("Fetching Tropical Weather Outlook", "Both IEM and NHC failed")
+            state["last_fetch_failure_alert_utc"] = now
+            save_state(state)
+        else:
+            print(f"Fetch failed again, but throttled -- already alerted {int((now - last_alert) / 60)} min ago.")
         sys.exit(1)
     print(f"Outlook fetched from {source}")
 
-    state = load_state()
+    if state.pop("last_fetch_failure_alert_utc", None) is not None:
+        save_state(state)
+
     last_text = state.get("last_outlook_text")
 
     if text == last_text:

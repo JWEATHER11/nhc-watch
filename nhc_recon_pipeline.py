@@ -35,6 +35,7 @@ IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
 NHC_RECON_URL = "https://www.nhc.noaa.gov/text/MIAREPNT2.shtml?text"
 
 STATE_FILE = Path(__file__).parent / "recon_pipeline_state.json"
+FETCH_FAILURE_ALERT_THROTTLE_MIN = 30
 CENTRAL_UTC_OFFSET = 5
 
 MAX_ATTEMPTS = 2  # reduced from 3 -- speed, matches wxmodel_pipeline.py fix
@@ -281,18 +282,31 @@ def send_failure_alert(context, error):
 
 
 def main():
+    state = load_state()
     text, source = fetch_recon()
     if not text:
-        send_failure_alert("Fetching recon VDM", "Both IEM and NHC failed")
+        # Confirmed live 2026-08-10: an IEM outage caused this to fire a
+        # fresh Telegram alert every single 25s loop iteration with zero
+        # throttling. Now only alerts once per throttle window.
+        now = time.time()
+        last_alert = state.get("last_fetch_failure_alert_utc")
+        if last_alert is None or (now - last_alert) >= FETCH_FAILURE_ALERT_THROTTLE_MIN * 60:
+            send_failure_alert("Fetching recon VDM", "Both IEM and NHC failed")
+            state["last_fetch_failure_alert_utc"] = now
+            save_state(state)
+        else:
+            print(f"Fetch failed again, but throttled -- already alerted {int((now - last_alert) / 60)} min ago.")
         sys.exit(1)
     print(f"Recon fetched from {source}")
+
+    if state.pop("last_fetch_failure_alert_utc", None) is not None:
+        save_state(state)
 
     fix_time = extract_fix_time(text)
     if not fix_time:
         print("No VDM fix time found -- likely no plane currently in the storm. Exiting quietly.")
         return
 
-    state = load_state()
     if state.get("last_fix_zulu") == fix_time["zulu"]:
         print(f"No new fix -- still {fix_time['zulu']}. Not sending an update.")
         return
