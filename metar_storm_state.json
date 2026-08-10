@@ -34,9 +34,6 @@
     "Baytown -- 44.9mi from Beaumont (KTXBAYTO265)": [
       "rain_today_1.0"
     ],
-    "BPT": [
-      "thunderstorm"
-    ],
     "Texas City -- 70.7mi from Beaumont (KTXTEXAS1069)": [
       "rain_today_1.0"
     ],
@@ -123,13 +120,15 @@
     ],
     "Lake Charles -- 56.3mi from Beaumont (KLALAKEC61)": [
       "rain_today_1.0"
+    ],
+    "Lake Charles -- 55.7mi from Beaumont (KLALAKEC266)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T17:23:45Z",
     "active_stations": [
       "BMT",
-      "BPT",
       "CWF",
       "JAS",
       "LCH",
