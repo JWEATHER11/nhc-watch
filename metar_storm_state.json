@@ -116,9 +116,6 @@
     "DWH": [
       "thunderstorm"
     ],
-    "JAS": [
-      "thunderstorm"
-    ],
     "Ragley -- 59.7mi from Beaumont (KLARAGLE11)": [
       "rain_today_1.0"
     ],
@@ -154,6 +151,9 @@
     ],
     "Texas City -- 73.2mi from Beaumont (KTXTEXAS1128)": [
       "rain_today_1.0"
+    ],
+    "IAH": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -165,7 +165,7 @@
       "DWH",
       "EFD",
       "HOU",
-      "JAS",
+      "IAH",
       "LFT",
       "LVJ",
       "SGR"
