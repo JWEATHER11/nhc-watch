@@ -5,12 +5,16 @@
     ],
     "BMT": [
       "thunderstorm"
+    ],
+    "BPT": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T15:21:06Z",
     "active_stations": [
-      "BMT"
+      "BMT",
+      "BPT"
     ]
   }
 }
