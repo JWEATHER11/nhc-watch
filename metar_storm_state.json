@@ -54,9 +54,6 @@
     "Vincent MS": [
       "rain_today_1.0"
     ],
-    "LFT": [
-      "thunderstorm"
-    ],
     "LCH": [
       "thunderstorm"
     ],
@@ -64,13 +61,15 @@
       "rain_today_1.0"
     ],
     "Sallie Curtis ES": [
-      "rain_today_1.0"
+      "rain_today_1.0",
+      "rain_today_2.0"
     ],
     "Beaumont -- 2.3mi from Beaumont (KTXBEAUM345)": [
       "rain_today_1.0"
     ],
     "Calder Terrace -- 2.4mi from Beaumont (KTXBEAUM211)": [
-      "rain_today_1.0"
+      "rain_today_1.0",
+      "rain_today_2.0"
     ],
     "Mauriceville -- 17.2mi from Beaumont (KTXORANG252)": [
       "rain_today_1.0"
@@ -79,6 +78,9 @@
       "rain_today_1.0"
     ],
     "Mauriceville -- 18.0mi from Beaumont (KTXORANG279)": [
+      "rain_today_1.0"
+    ],
+    "Bevil Oaks": [
       "rain_today_1.0"
     ]
   },
@@ -89,7 +91,6 @@
       "BPT",
       "JAS",
       "LCH",
-      "LFT",
       "ORG",
       "SGR",
       "T78"
