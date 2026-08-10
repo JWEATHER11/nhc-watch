@@ -127,9 +127,6 @@
     "Texas City -- 73.5mi from Beaumont (KTXTEXAS1174)": [
       "rain_today_1.0"
     ],
-    "IAH": [
-      "thunderstorm"
-    ],
     "Sulphur -- 49.1mi from Beaumont (KLASULPH116)": [
       "rain_today_1.0"
     ],
@@ -140,8 +137,7 @@
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T21:28:43Z",
     "active_stations": [
-      "DWH",
-      "IAH"
+      "DWH"
     ]
   }
 }
