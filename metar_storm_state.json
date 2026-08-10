@@ -1,16 +1,11 @@
 {
   "active_hazards": {
-    "GLS": [
-      "thunderstorm"
-    ],
     "Texas City -- 65.7mi from Beaumont (KTXTEXAS1191)": [
       "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T14:35:14Z",
-    "active_stations": [
-      "GLS"
-    ]
+    "active_stations": []
   }
 }
