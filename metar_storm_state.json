@@ -103,9 +103,6 @@
     "Lake Charles -- 55.7mi from Beaumont (KLALAKEC266)": [
       "rain_today_1.0"
     ],
-    "DWH": [
-      "thunderstorm"
-    ],
     "Ragley -- 59.7mi from Beaumont (KLARAGLE11)": [
       "rain_today_1.0"
     ],
@@ -139,8 +136,6 @@
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T22:29:44Z",
-    "active_stations": [
-      "DWH"
-    ]
+    "active_stations": []
   }
 }
