@@ -6,9 +6,6 @@
     "BMT": [
       "thunderstorm"
     ],
-    "BPT": [
-      "thunderstorm"
-    ],
     "Orange -- 12.9mi from Beaumont (KTXORANG327)": [
       "rain_today_1.0"
     ],
@@ -26,6 +23,9 @@
     ],
     "Texas City -- 71.1mi from Beaumont (KTXTEXAS1169)": [
       "rain_today_1.0"
+    ],
+    "Texas City -- 72.1mi from Beaumont (KTXTEXAS1194)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
@@ -33,7 +33,6 @@
     "active_stations": [
       "3R7",
       "BMT",
-      "BPT",
       "ORG",
       "T78"
     ]
