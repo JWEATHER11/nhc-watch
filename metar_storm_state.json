@@ -47,6 +47,12 @@
     ],
     "Bolivar Peninsula -- 39.0mi from Beaumont (KTXHIGHI16)": [
       "rain_today_1.0"
+    ],
+    "JAS": [
+      "thunderstorm"
+    ],
+    "Vincent MS": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
@@ -54,6 +60,7 @@
     "active_stations": [
       "BMT",
       "BPT",
+      "JAS",
       "ORG",
       "SGR",
       "T78"
