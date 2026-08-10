@@ -15,11 +15,9 @@
     "ORG": [
       "thunderstorm"
     ],
-    "3R7": [
-      "thunderstorm"
-    ],
     "Bayou Din": [
-      "rain_today_1.0"
+      "rain_today_1.0",
+      "rain_today_2.0"
     ],
     "Texas City -- 71.1mi from Beaumont (KTXTEXAS1169)": [
       "rain_today_1.0"
@@ -37,13 +35,19 @@
     ],
     "Baytown -- 44.9mi from Beaumont (KTXBAYTO265)": [
       "rain_today_1.0"
+    ],
+    "BPT": [
+      "thunderstorm"
+    ],
+    "Texas City -- 70.7mi from Beaumont (KTXTEXAS1069)": [
+      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T15:21:06Z",
     "active_stations": [
-      "3R7",
       "BMT",
+      "BPT",
       "LVJ",
       "ORG",
       "T78"
