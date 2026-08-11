@@ -1,7 +1,13 @@
 {
-  "active_hazards": {},
+  "active_hazards": {
+    "EFD": [
+      "thunderstorm"
+    ]
+  },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-10T22:29:44Z",
-    "active_stations": []
+    "last_sent_utc": "2026-08-11T17:49:00Z",
+    "active_stations": [
+      "EFD"
+    ]
   }
 }
