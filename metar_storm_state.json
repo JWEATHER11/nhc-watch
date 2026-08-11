@@ -3,9 +3,6 @@
     "EFD": [
       "thunderstorm"
     ],
-    "LVJ": [
-      "thunderstorm"
-    ],
     "HOU": [
       "thunderstorm"
     ],
@@ -18,7 +15,6 @@
     "active_stations": [
       "EFD",
       "HOU",
-      "LVJ",
       "T78"
     ]
   }
