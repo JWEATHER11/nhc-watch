@@ -8,6 +8,9 @@
     ],
     "HOU": [
       "thunderstorm"
+    ],
+    "T78": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
@@ -15,7 +18,8 @@
     "active_stations": [
       "EFD",
       "HOU",
-      "LVJ"
+      "LVJ",
+      "T78"
     ]
   }
 }
