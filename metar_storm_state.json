@@ -1,9 +1,5 @@
 {
-  "active_hazards": {
-    "Liberty -- 38.2mi from Beaumont (KTXLIBER426)": [
-      "rain_today_1.0"
-    ]
-  },
+  "active_hazards": {},
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-10T22:29:44Z",
     "active_stations": []
