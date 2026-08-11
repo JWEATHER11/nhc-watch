@@ -1,16 +1,17 @@
 {
   "active_hazards": {
-    "T78": [
-      "thunderstorm"
-    ],
     "Cleveland -- 49.0mi from Beaumont (KTXCLEVE129)": [
+      "rain_today_1.0"
+    ],
+    "Highlands -- 57.9mi from Beaumont (KTXHIGHL113)": [
+      "rain_today_1.0"
+    ],
+    "Cleveland -- 49.2mi from Beaumont (KTXCLEVE107)": [
       "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-11T18:50:08Z",
-    "active_stations": [
-      "T78"
-    ]
+    "active_stations": []
   }
 }
