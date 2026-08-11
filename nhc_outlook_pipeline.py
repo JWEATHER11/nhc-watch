@@ -280,6 +280,12 @@ def send_failure_alert(context, error):
         print(f"Could not even send the failure alert: {e}", file=sys.stderr)
 
 
+# Matches NHC's own map convention (Low=yellow, Medium=orange, High=red),
+# keyed off the 7-day formation chance category (the wider/longer-range
+# figure NHC's graphic itself colors by).
+RISK_COLOR_EMOJI = {"Low": "🟡", "Medium": "🟠", "High": "🔴"}
+
+
 def build_message(text):
     issued = issued_time_from_header(text)
     parts = ["🌎 NHC 7-Day Tropical Weather Outlook"]
@@ -308,7 +314,8 @@ def build_message(text):
     for area in areas:
         geo = region_geo_context(area["region"])
         geo_suffix = f" ({geo})" if geo else ""
-        parts.append(f"🌀 {area['number']}. {area['region']}{geo_suffix}:")
+        risk_emoji = RISK_COLOR_EMOJI.get(area["chance_7day_category"], "🌀")
+        parts.append(f"{risk_emoji} {area['number']}. {area['region']}{geo_suffix}:")
         parts.append(area["description"])
         parts.append(f"⏱️ 48-hr formation chance: {area['chance_48h_category']} ({area['chance_48h_pct']}%)")
         parts.append(f"📅 7-day formation chance: {area['chance_7day_category']} ({area['chance_7day_pct']}%)")
