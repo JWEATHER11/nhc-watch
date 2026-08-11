@@ -1,15 +1,5 @@
 {
   "active_hazards": {
-    "Texas City -- 65.7mi from Beaumont (KTXTEXAS1191)": [
-      "rain_today_1.0"
-    ],
-    "Orange -- 12.9mi from Beaumont (KTXORANG327)": [
-      "rain_today_1.0",
-      "rain_today_2.0"
-    ],
-    "Texas City -- 71.1mi from Beaumont (KTXTEXAS1169)": [
-      "rain_today_1.0"
-    ],
     "Texas City -- 72.1mi from Beaumont (KTXTEXAS1194)": [
       "rain_today_1.0",
       "rain_today_2.0",
@@ -18,100 +8,10 @@
     "Texas City -- 73.1mi from Beaumont (KTXTEXAS1167)": [
       "rain_today_1.0"
     ],
-    "Baytown -- 44.9mi from Beaumont (KTXBAYTO265)": [
-      "rain_today_1.0"
-    ],
-    "Texas City -- 70.7mi from Beaumont (KTXTEXAS1069)": [
-      "rain_today_1.0"
-    ],
-    "High Island": [
-      "rain_today_1.0"
-    ],
-    "Bolivar Peninsula -- 39.0mi from Beaumont (KTXHIGHI16)": [
-      "rain_today_1.0"
-    ],
-    "Vincent MS": [
-      "rain_today_1.0",
-      "rain_today_2.0"
-    ],
-    "Mauriceville": [
-      "rain_today_1.0"
-    ],
-    "Sallie Curtis ES": [
-      "rain_today_1.0",
-      "rain_today_2.0"
-    ],
-    "Beaumont -- 2.3mi from Beaumont (KTXBEAUM345)": [
-      "rain_today_1.0"
-    ],
-    "Calder Terrace -- 2.4mi from Beaumont (KTXBEAUM211)": [
-      "rain_today_1.0",
-      "rain_today_2.0"
-    ],
-    "Mauriceville -- 17.2mi from Beaumont (KTXORANG252)": [
-      "rain_today_1.0"
-    ],
-    "Mauriceville-1 mile north": [
-      "rain_today_1.0"
-    ],
-    "Mauriceville -- 18.0mi from Beaumont (KTXORANG279)": [
-      "rain_today_1.0"
-    ],
-    "Holly Beach": [
-      "rain_today_1.0"
-    ],
-    "Holly Beach -- 45.5mi from Beaumont (KLACAMER19)": [
-      "rain_today_1.0"
-    ],
-    "Orange -- 18.4mi from Beaumont (KTXORANG120)": [
-      "rain_today_1.0"
-    ],
     "Mauriceville -- 17.0mi from Beaumont (KTXORANG285)": [
       "rain_today_1.0"
     ],
-    "Tolbert Ranch": [
-      "rain_today_1.0"
-    ],
-    "Kountze -- 13.8mi from Beaumont (KTXKOUNT62)": [
-      "rain_today_1.0"
-    ],
-    "Orange -- 14.5mi from Beaumont (KTXORANG138)": [
-      "rain_today_1.0"
-    ],
-    "Winnie": [
-      "rain_today_1.0"
-    ],
-    "Stowell -- 24.4mi from Beaumont (KTXSTOWE3)": [
-      "rain_today_1.0"
-    ],
     "Beaumont -- 2.5mi from Beaumont (KTXBEAUM341)": [
-      "rain_today_1.0"
-    ],
-    "Silsbee -- 17.5mi from Beaumont (KTXSILSB71)": [
-      "rain_today_1.0"
-    ],
-    "Lake Charles -- 56.3mi from Beaumont (KLALAKEC61)": [
-      "rain_today_1.0"
-    ],
-    "Lake Charles -- 55.7mi from Beaumont (KLALAKEC266)": [
-      "rain_today_1.0"
-    ],
-    "Ragley -- 59.7mi from Beaumont (KLARAGLE11)": [
-      "rain_today_1.0"
-    ],
-    "Baytown -- 45.9mi from Beaumont (KTXBAYTO157)": [
-      "rain_today_1.0"
-    ],
-    "Longville -- 61.0mi from Beaumont (KLALONGV9)": [
-      "rain_today_1.0"
-    ],
-    "Texas City -- 73.2mi from Beaumont (KTXTEXAS1128)": [
-      "rain_today_1.0"
-    ],
-    "Texas City -- 73.5mi from Beaumont (KTXTEXAS1174)": [
-      "rain_today_1.0"
-    ],
-    "Sulphur -- 49.1mi from Beaumont (KLASULPH116)": [
       "rain_today_1.0"
     ],
     "Liberty -- 38.2mi from Beaumont (KTXLIBER426)": [
