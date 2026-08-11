@@ -5,12 +5,16 @@
     ],
     "LVJ": [
       "thunderstorm"
+    ],
+    "HOU": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
     "last_sent_utc": "2026-08-11T17:49:00Z",
     "active_stations": [
       "EFD",
+      "HOU",
       "LVJ"
     ]
   }
