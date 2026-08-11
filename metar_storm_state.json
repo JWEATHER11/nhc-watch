@@ -2,9 +2,6 @@
   "active_hazards": {
     "Liberty -- 38.2mi from Beaumont (KTXLIBER426)": [
       "rain_today_1.0"
-    ],
-    "Texas City -- 72.9mi from Beaumont (KTXTEXAS1186)": [
-      "rain_today_1.0"
     ]
   },
   "thunderstorm_throttle": {
