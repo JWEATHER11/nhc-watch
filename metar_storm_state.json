@@ -8,10 +8,19 @@
     ],
     "Cleveland -- 49.2mi from Beaumont (KTXCLEVE107)": [
       "rain_today_1.0"
+    ],
+    "DWH": [
+      "thunderstorm"
+    ],
+    "CXO": [
+      "thunderstorm"
     ]
   },
   "thunderstorm_throttle": {
-    "last_sent_utc": "2026-08-11T21:48:00Z",
-    "active_stations": []
+    "last_sent_utc": "2026-08-11T22:24:12Z",
+    "active_stations": [
+      "CXO",
+      "DWH"
+    ]
   }
 }
