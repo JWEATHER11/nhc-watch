@@ -96,5 +96,26 @@
     ]
   ],
   "day5_prev_coverage_pct": 20,
-  "quiet_announced_date": "2026-08-12"
+  "quiet_announced_date": "2026-08-12",
+  "al032026": "AVNI:2026081212|AVNO:2026081206|HWRF:2026081200",
+  "al032026_summaries": {
+    "AVNO": {
+      "cycle": "2026081206",
+      "vmax_kt": 26,
+      "mslp": 1010,
+      "tau": 0
+    },
+    "HWRF": {
+      "cycle": "2026081200",
+      "vmax_kt": 39,
+      "mslp": 1011,
+      "tau": 6
+    },
+    "AVNI": {
+      "cycle": "2026081212",
+      "vmax_kt": 40,
+      "mslp": null,
+      "tau": 0
+    }
+  }
 }
