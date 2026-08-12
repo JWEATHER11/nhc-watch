@@ -3,6 +3,22 @@
     {
       "short_rain_in": 0.1,
       "medium_rain_in": 0.1,
+      "coverage_pct": 20,
+      "medium_coverage_pct": 0,
+      "long_coverage_pct": 0,
+      "temp_drop_f": 6.7,
+      "front_signal": false,
+      "short_temp_f": 91.3,
+      "medium_temp_f": 92.6,
+      "temp_5_7_f": 94.3,
+      "temp_7_10_f": 96.2,
+      "avg_dewpoint_f": 76.1,
+      "tropical_lowest_mb": 1007.7,
+      "tropical_wind_mph": 9
+    },
+    {
+      "short_rain_in": 0.1,
+      "medium_rain_in": 0.1,
       "coverage_pct": 60,
       "medium_coverage_pct": 0,
       "long_coverage_pct": 40,
@@ -47,22 +63,6 @@
       "avg_dewpoint_f": 75.7,
       "tropical_lowest_mb": 1008.0,
       "tropical_wind_mph": 19
-    },
-    {
-      "short_rain_in": 0.3,
-      "medium_rain_in": 0.0,
-      "coverage_pct": 40,
-      "medium_coverage_pct": 0,
-      "long_coverage_pct": 60,
-      "temp_drop_f": 5.0,
-      "front_signal": false,
-      "short_temp_f": 91.0,
-      "medium_temp_f": 92.6,
-      "temp_5_7_f": 94.9,
-      "temp_7_10_f": 95.6,
-      "avg_dewpoint_f": 75.8,
-      "tropical_lowest_mb": 1007.9,
-      "tropical_wind_mph": 8
     }
   ],
   "ndfd_send_day": "2026-08-11",
@@ -71,22 +71,21 @@
     "NWS Houston": 0.2,
     "NWS Lake Charles": 0.0
   },
-  "last_combined_cycle": "2026-08-11T12",
+  "last_combined_cycle": "2026-08-11T18",
   "genesis_trend_history": [
     [
       "Caribbean Sea",
-      "Off SE US Coast",
-      "Subtropical Atlantic"
-    ],
-    [
-      "Caribbean Sea",
-      "Off SE US Coast",
-      "Subtropical Atlantic"
-    ],
-    [
-      "Caribbean Sea",
-      "Off SE US Coast",
       "Open Tropical Atlantic",
+      "Subtropical Atlantic"
+    ],
+    [
+      "Caribbean Sea",
+      "Off SE US Coast",
+      "Subtropical Atlantic"
+    ],
+    [
+      "Caribbean Sea",
+      "Off SE US Coast",
       "Subtropical Atlantic"
     ],
     [
@@ -96,6 +95,6 @@
       "Subtropical Atlantic"
     ]
   ],
-  "day5_prev_coverage_pct": 40,
+  "day5_prev_coverage_pct": 0,
   "quiet_announced_date": "2026-08-12"
 }
