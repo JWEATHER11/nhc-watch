@@ -43,14 +43,8 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from pathlib import Path
 
-STORM_PIL_SUFFIX = "AT2"
-
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
-NHC_URLS = {
-    "TCP": f"https://www.nhc.noaa.gov/text/MIATCP{STORM_PIL_SUFFIX}.shtml?text",
-    "TCD": f"https://www.nhc.noaa.gov/text/MIATCD{STORM_PIL_SUFFIX}.shtml?text",
-    "TCM": f"https://www.nhc.noaa.gov/text/MIATCM{STORM_PIL_SUFFIX}.shtml?text",
-}
+CURRENT_STORMS_URL = "https://www.nhc.noaa.gov/CurrentStorms.json"
 
 STATE_FILE = Path(__file__).parent / "pipeline_state.json"
 CENTRAL_UTC_OFFSET = 5  # CDT (UTC-5). Change to 6 for CST (winter).
@@ -82,10 +76,10 @@ def _fetch_with_retries(url, label):
     return None
 
 
-def fetch_product(product_type):
+def fetch_product(product_type, storm_suffix):
     """Cache-buster on every fetch -- confirmed necessary, IEM/NHC can
     serve a cached response for a plain unchanging URL."""
-    pil = f"{product_type}{STORM_PIL_SUFFIX}"
+    pil = f"{product_type}{storm_suffix}"
     cache_buster = int(time.time() * 1000)
     iem_url = f"{IEM_BASE}?pil={pil}&_cb={cache_buster}"
 
@@ -94,14 +88,39 @@ def fetch_product(product_type):
         return text, "IEM"
 
     print(f"[{pil}] IEM failed after {MAX_ATTEMPTS} attempts, falling back to NHC...")
-    base_url = NHC_URLS[product_type]
-    nhc_url = f"{base_url}&_cb={cache_buster}" if "?" in base_url else f"{base_url}?_cb={cache_buster}"
+    base_url = f"https://www.nhc.noaa.gov/text/MIA{pil}.shtml?text"
+    nhc_url = f"{base_url}&_cb={cache_buster}"
     text = _fetch_with_retries(nhc_url, f"NHC:{pil}")
     if text:
         return text, "NHC"
 
     print(f"[{pil}] Both IEM and NHC failed after {MAX_ATTEMPTS} attempts each.")
     return None, "FAILED"
+
+
+def fetch_active_storm_bin():
+    """Auto-discovers the current active Atlantic-basin storm's PIL suffix
+    (e.g. "AT3") from NHC's own machine-readable active-storms feed, instead
+    of relying on a hardcoded suffix that has to be manually updated every
+    time one storm ends and another forms. Confirmed live 2026-08-12: a
+    hardcoded suffix left pointed at a dissipated storm (Bertha/AT2) meant
+    the pipeline silently never noticed Tropical Storm Cristobal (AT3) form
+    days later -- this makes that class of bug impossible going forward.
+    Returns None if no Atlantic storm is currently active."""
+    cache_buster = int(time.time())
+    text = _fetch_with_retries(f"{CURRENT_STORMS_URL}?_cb={cache_buster}", "CurrentStorms")
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    for storm in data.get("activeStorms", []):
+        storm_id = (storm.get("id") or "").lower()
+        bin_number = storm.get("binNumber")
+        if storm_id.startswith("al") and bin_number:
+            return bin_number
+    return None
 
 
 # ===========================================================================
@@ -377,18 +396,18 @@ def save_state(state):
 # ===========================================================================
 # Graphics -- cone + storm surge, cache-busted every call
 # ===========================================================================
-def build_cone_url():
-    basin = STORM_PIL_SUFFIX[:2].upper()
-    num = STORM_PIL_SUFFIX[2:].zfill(2)
+def build_cone_url(storm_suffix):
+    basin = storm_suffix[:2].upper()
+    num = storm_suffix[2:].zfill(2)
     basin_file_code = "AL" if basin == "AT" else basin
     year = datetime.utcnow().year
     cache_buster = int(time.time())
     return f"https://www.nhc.noaa.gov/storm_graphics/{basin}{num}/{basin_file_code}{num}{year}_5day_cone.png?_cb={cache_buster}"
 
 
-def build_surge_url():
-    basin = STORM_PIL_SUFFIX[:2].upper()
-    num = STORM_PIL_SUFFIX[2:].zfill(2)
+def build_surge_url(storm_suffix):
+    basin = storm_suffix[:2].upper()
+    num = storm_suffix[2:].zfill(2)
     basin_file_code = "AL" if basin == "AT" else basin
     year = datetime.utcnow().year
     cache_buster = int(time.time())
@@ -547,7 +566,7 @@ def build_fast_headline(facts):
 # ===========================================================================
 # Message 2 -- Discussion (only sent when genuinely new, checked separately)
 # ===========================================================================
-def check_and_send_discussion(state):
+def check_and_send_discussion(state, storm_suffix):
     """Runs every loop iteration, completely independent of whether a new
     TCP advisory was found this cycle. Only sends when BOTH signals agree
     a new discussion has posted: the Discussion Number increased, AND the
@@ -557,7 +576,7 @@ def check_and_send_discussion(state):
         return
 
     try:
-        tcd_text, tcd_source = fetch_product("TCD")
+        tcd_text, tcd_source = fetch_product("TCD", storm_suffix)
     except Exception as e:
         print(f"[Discussion check] fetch failed (non-fatal, will retry next loop): {e}")
         return
@@ -620,13 +639,35 @@ def check_and_send_discussion(state):
 def main():
     state = load_state()
 
+    # --- Auto-discover the active Atlantic storm instead of relying on a
+    # hardcoded suffix that has to be manually updated (see
+    # fetch_active_storm_bin docstring for why this replaced that). If the
+    # tracked storm changed (including going from "some storm" to "none"),
+    # reset all storm-specific tracking so nothing bleeds across storms. ---
+    storm_bin = fetch_active_storm_bin()
+    tracked_bin = state.get("current_storm_bin")
+    if storm_bin != tracked_bin:
+        if storm_bin:
+            print(f"Active storm changed: {tracked_bin!r} -> {storm_bin!r}. Resetting advisory tracking for the new storm.")
+        else:
+            print(f"Previously tracked storm {tracked_bin!r} is no longer active. Clearing tracking until a new storm forms.")
+        for key in ("last", "last_advisory_number", "last_sent_discussion_number",
+                    "last_sent_discussion_text", "pending_cone_verification", "pending_discussion"):
+            state.pop(key, None)
+        state["current_storm_bin"] = storm_bin
+        save_state(state)
+
+    if not storm_bin:
+        print("No active Atlantic storm currently -- nothing to check this cycle.")
+        return
+
     # --- Backup verification: 15 min after a successful send, resend the
     # cone + full Message 1 + storm surge graphic as a confirmation ---
     pending_cone = state.get("pending_cone_verification")
     if pending_cone and (time.time() - pending_cone["queued_at"]) >= 900:
         try:
             if telegram_configured():
-                send_telegram_photo(build_cone_url(), caption=f"Cone Graphic -- 15-Min Backup (Advisory #{pending_cone['advisory_num']})")
+                send_telegram_photo(build_cone_url(storm_bin), caption=f"Cone Graphic -- 15-Min Backup (Advisory #{pending_cone['advisory_num']})")
         except Exception as e:
             print(f"Cone verification resend failed (non-fatal): {e}")
         try:
@@ -636,17 +677,17 @@ def main():
             print(f"Full-message verification resend failed (non-fatal): {e}")
         try:
             if telegram_configured():
-                send_telegram_photo(build_surge_url(), caption=f"Peak Storm Surge Forecast (Advisory #{pending_cone['advisory_num']})")
+                send_telegram_photo(build_surge_url(storm_bin), caption=f"Peak Storm Surge Forecast (Advisory #{pending_cone['advisory_num']})")
         except Exception as e:
             print(f"Storm surge resend failed (non-fatal -- may not be active): {e}")
         state.pop("pending_cone_verification", None)
         save_state(state)
 
     # --- Discussion check runs every iteration, independent of advisories ---
-    check_and_send_discussion(state)
+    check_and_send_discussion(state, storm_bin)
 
     # --- Fetch the Public Advisory and check for a new one ---
-    tcp_text, tcp_source = fetch_product("TCP")
+    tcp_text, tcp_source = fetch_product("TCP", storm_bin)
     if not tcp_text:
         # Confirmed live 2026-08-10: an IEM outage caused this to fire a
         # fresh Telegram alert every single 25s loop iteration with zero
@@ -713,7 +754,7 @@ def main():
     # TCD forecast-position table for peak-forecast timing (no discussion
     # text pulled here -- that's handled entirely separately/independently)
     try:
-        tcd_text_for_bands, _ = fetch_product("TCD")
+        tcd_text_for_bands, _ = fetch_product("TCD", storm_bin)
         if tcd_text_for_bands:
             positions = tcd_forecast_positions(tcd_text_for_bands)
             bands = summarize_forecast_bands(positions, wind_mph)
@@ -724,7 +765,7 @@ def main():
 
     # TCM for gusts + wind radii
     try:
-        tcm_text, tcm_source = fetch_product("TCM")
+        tcm_text, tcm_source = fetch_product("TCM", storm_bin)
         if tcm_text:
             print(f"TCM fetched from {tcm_source}")
             tcm_data = tcm_gusts_and_radii(tcm_text)
@@ -741,7 +782,7 @@ def main():
 
     if telegram_configured():
         try:
-            send_telegram_photo(build_cone_url(), caption=f"{facts['name']} -- 5-Day Cone (Advisory #{advisory_num})")
+            send_telegram_photo(build_cone_url(storm_bin), caption=f"{facts['name']} -- 5-Day Cone (Advisory #{advisory_num})")
         except Exception as e:
             print(f"Cone graphic send failed (non-fatal): {e}")
 

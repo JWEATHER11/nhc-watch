@@ -29,10 +29,8 @@ import urllib.request
 from email.mime.text import MIMEText
 from pathlib import Path
 
-STORM_PIL_SUFFIX = "NT2"  # Atlantic recon PIL suffix -- change if a new storm forms (NT2 -> NT3)
-
 IEM_BASE = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
-NHC_RECON_URL = "https://www.nhc.noaa.gov/text/MIAREPNT2.shtml?text"
+CURRENT_STORMS_URL = "https://www.nhc.noaa.gov/CurrentStorms.json"
 
 STATE_FILE = Path(__file__).parent / "recon_pipeline_state.json"
 CENTRAL_UTC_OFFSET = 5
@@ -61,21 +59,45 @@ def _fetch_with_retries(url, label):
     return None
 
 
-def fetch_recon():
+def fetch_recon(storm_suffix):
     """Cache-buster added after confirming real staleness in the advisory
     pipeline (IEM/NHC can serve a cached response for a plain URL)."""
-    pil = f"REP{STORM_PIL_SUFFIX}"
+    pil = f"REP{storm_suffix}"
     cache_buster = int(time.time())
     iem_url = f"{IEM_BASE}?pil={pil}&_cb={cache_buster}"
     text = _fetch_with_retries(iem_url, f"IEM:{pil}")
     if text:
         return text, "IEM"
     print(f"[{pil}] IEM failed, falling back to NHC...")
-    nhc_url = f"{NHC_RECON_URL}&_cb={cache_buster}"
+    nhc_url = f"https://www.nhc.noaa.gov/text/MIA{pil}.shtml?text&_cb={cache_buster}"
     text = _fetch_with_retries(nhc_url, f"NHC:{pil}")
     if text:
         return text, "NHC"
     return None, "FAILED"
+
+
+def fetch_active_storm_recon_suffix():
+    """Auto-discovers the current active Atlantic storm from NHC's own
+    machine-readable feed and derives the recon PIL suffix from its
+    advisory binNumber (e.g. "AT3" -> "NT3"), instead of relying on a
+    hardcoded suffix that has to be manually updated every time one storm
+    ends and another forms -- see nhc_pipeline.fetch_active_storm_bin for
+    why that was a real, confirmed bug. Returns None if no Atlantic storm
+    is currently active."""
+    cache_buster = int(time.time())
+    text = _fetch_with_retries(f"{CURRENT_STORMS_URL}?_cb={cache_buster}", "CurrentStorms")
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    for storm in data.get("activeStorms", []):
+        storm_id = (storm.get("id") or "").lower()
+        bin_number = storm.get("binNumber")
+        if storm_id.startswith("al") and bin_number and bin_number.startswith("AT"):
+            return "NT" + bin_number[2:]
+    return None
 
 
 def kt_to_mph(kt):
@@ -282,7 +304,28 @@ def send_failure_alert(context, error):
 
 def main():
     state = load_state()
-    text, source = fetch_recon()
+
+    # --- Auto-discover the active storm's recon PIL instead of relying on
+    # a hardcoded suffix -- see fetch_active_storm_recon_suffix docstring.
+    # If the tracked storm changed, reset mission tracking so a new
+    # storm's first fix isn't compared against the old storm's mission. ---
+    storm_suffix = fetch_active_storm_recon_suffix()
+    tracked_suffix = state.get("current_storm_recon_suffix")
+    if storm_suffix != tracked_suffix:
+        if storm_suffix:
+            print(f"Active storm changed: {tracked_suffix!r} -> {storm_suffix!r}. Resetting mission tracking for the new storm.")
+        else:
+            print(f"Previously tracked storm {tracked_suffix!r} is no longer active. Clearing mission tracking until a new storm forms.")
+        for key in ("mission", "last_fix_zulu"):
+            state.pop(key, None)
+        state["current_storm_recon_suffix"] = storm_suffix
+        save_state(state)
+
+    if not storm_suffix:
+        print("No active Atlantic storm currently -- nothing to check this cycle.")
+        return
+
+    text, source = fetch_recon(storm_suffix)
     if not text:
         # Confirmed live 2026-08-10: an IEM outage caused this to fire a
         # fresh Telegram alert every single 25s loop iteration with zero
