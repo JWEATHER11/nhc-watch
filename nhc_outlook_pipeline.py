@@ -325,29 +325,29 @@ def build_message(text):
     return "\n".join(parts).rstrip()
 
 
-FETCH_FAILURE_ALERT_THROTTLE_MIN = 30
-
-
 def main():
     state = load_state()
     text, source = fetch_outlook()
     if not text:
-        # Confirmed live 2026-08-10: IEM was down for hours and this used
-        # to fire a fresh Telegram alert every single 25s loop iteration
-        # with zero throttling -- hundreds of identical "Both IEM and NHC
-        # failed" messages. Now only alerts once per throttle window.
-        now = time.time()
-        last_alert = state.get("last_fetch_failure_alert_utc")
-        if last_alert is None or (now - last_alert) >= FETCH_FAILURE_ALERT_THROTTLE_MIN * 60:
+        # Confirmed live 2026-08-10: IEM outage caused an unthrottled
+        # alert every 25s loop iteration -- fixed with a 30-min throttle.
+        # Confirmed live 2026-08-12: during a multi-hour outage (IEM
+        # timing out AND NHC's own site returning 403), the 30-min
+        # throttle still re-alerted every ~30 min, producing several
+        # messages over one ongoing outage. Now alerts ONCE when an
+        # outage starts, then stays silent for the rest of that same
+        # outage no matter how long it lasts -- only a NEW outage after
+        # a real recovery alerts again.
+        if not state.get("fetch_failure_alerted"):
             send_failure_alert("Fetching Tropical Weather Outlook", "Both IEM and NHC failed")
-            state["last_fetch_failure_alert_utc"] = now
+            state["fetch_failure_alerted"] = True
             save_state(state)
         else:
-            print(f"Fetch failed again, but throttled -- already alerted {int((now - last_alert) / 60)} min ago.")
+            print("Fetch failed again, but already alerted for this ongoing outage -- staying quiet.")
         sys.exit(1)
     print(f"Outlook fetched from {source}")
 
-    if state.pop("last_fetch_failure_alert_utc", None) is not None:
+    if state.pop("fetch_failure_alerted", None) is not None:
         save_state(state)
 
     last_text = state.get("last_outlook_text")
