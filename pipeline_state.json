@@ -6,19 +6,24 @@
     "Tropical Storm Warning|West Cameron"
   ],
   "current_storm_bin": "AT5",
-  "last_advisory_number": "1A",
+  "last_advisory_number": "2",
   "last": {
-    "number": "1A",
+    "number": "2",
     "status_and_name": "Tropical Depression Five",
-    "lat": 28.0,
-    "lon": -90.8,
+    "lat": 28.2,
+    "lon": -91.5,
     "wind_mph": 35,
-    "pressure_mb": 1012
+    "pressure_mb": 1011
   },
   "last_sent_discussion_number": 1,
   "last_sent_discussion_text": "The disturbance (AL97) that the NHC has been tracking over the northern Gulf of America continues to produce a small area of showers and thunderstorms with modest signs of organization. Overnight scatterometer data indicated the circulation lacked definition on the western side, and recent surface observations and data from the Air Force Hurricane Hunters suggest the center is still elongated and ill defined. However, given the expectation that the system will become a tropical cyclone, and the risk of tropical storm conditions for portions of the northwestern Gulf Coast, we are initiating advisories on Potential Tropical Cyclone Five. The initial intensity is set at a possibly generous 30 kt based on the overnight scatterometer data.\n\nThe initial motion is uncertain given the system is still in its formative stage, but our best estimate is west-northwestward (285/4 kt). The track models agree that the system should continue west-northwestward during the next day or so and approach the Upper Texas and southwestern Louisiana coast within the warning area on Tuesday. The official NHC track forecast lies very near the HFIP corrected consensus (HCCA), near the center of the guidance envelope. A 48-h post-tropical forecast point is shown for continuity, but the system will likely be dissipated by that time.\n\nThe small system is located over SSTs greater than 30 deg C, and the deep-layer shear appears fairly weak as diagnosed from the SHIPS guidance. Some strengthening is expected before the system reaches the coast on Tuesday, as long as it is able to develop a more cohesive tropical cyclone structure. Since the center is predicted to move onshore between 24-36 h, additional strengthening could occur between those forecast points that cannot be reflected in the official forecast. Given the anticipated small size of the system, it could be prone to quicker intensity changes, so additional strengthening beyond what is shown cannot be ruled out. The NHC intensity forecast lies at the top of the latest guidance.",
   "pending_discussion": {
-    "advisory_num": "1A",
-    "advisory_label": "Advisory #1A"
+    "advisory_num": "2",
+    "advisory_label": "Advisory #2"
+  },
+  "pending_cone_verification": {
+    "advisory_num": "2",
+    "queued_at": 1788209621.8174338,
+    "full_message": "Issued: 400 PM CDT Mon Aug 31 2026\n\nTropical Depression Five -- Advisory #2\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 46 mph)\nMin pressure: 1011 mb\nMovement: WNW at 6 mph\nTrack change: moved 45 mi WNW since advisory #1A\nTropical storm-force winds extend: NE 20 mi, SE 10 mi, SW 0 mi, NW 0 mi\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: -1 mb (strengthening signal)\nPeak forecast: 45 mph (Tropical Storm) at 7:00 AM, day 1\n\n(Next complete advisory at 1000 PM)"
   }
 }
