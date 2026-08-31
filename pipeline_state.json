@@ -6,11 +6,6 @@
     "Tropical Storm Warning|West Cameron"
   ],
   "current_storm_bin": "AT5",
-  "pending_cone_verification": {
-    "advisory_num": "2",
-    "queued_at": 1788213295.3341167,
-    "full_message": "Issued: 400 PM CDT Mon Aug 31 2026\n\nTropical Depression Five -- Advisory #2\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 46 mph)\nMin pressure: 1011 mb\nMovement: WNW at 6 mph\nTropical storm-force winds extend: NE 20 mi, SE 10 mi, SW 0 mi, NW 0 mi\nPeak forecast: 60 mph (Tropical Storm) at 1:00 PM, day 1\n\n(Next complete advisory at 1000 PM)"
-  },
   "last_advisory_number": "2",
   "last": {
     "number": "2",
