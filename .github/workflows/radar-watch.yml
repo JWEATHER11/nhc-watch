@@ -1,11 +1,11 @@
 name: Radar Watch (Continuous)
 
 on:
-  schedule:
-    # Safety net only -- fires every 6h in case the self-restart chain ever
-    # breaks. Under normal operation the loop keeps itself running
-    # continuously and this trigger does nothing (see concurrency block).
-    - cron: "30 */6 * * *"
+  # DISABLED (manual-only for now -- not part of the NHC-only revival): schedule:
+  # # Safety net only -- fires every 6h in case the self-restart chain ever
+  # # breaks. Under normal operation the loop keeps itself running
+  # # continuously and this trigger does nothing (see concurrency block).
+  # - cron: "30 */6 * * *"
   workflow_dispatch: {}
 
 permissions:

@@ -1,8 +1,8 @@
 name: WPC ERO Fast Watch (Continuous)
 
 on:
-  schedule:
-    - cron: "50 */6 * * *"
+  # DISABLED (manual-only for now -- not part of the NHC-only revival): schedule:
+  # - cron: "50 */6 * * *"
   workflow_dispatch: {}
 
 permissions:
