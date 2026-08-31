@@ -636,8 +636,87 @@ def check_and_send_discussion(state, storm_suffix):
 # ===========================================================================
 # Main
 # ===========================================================================
+# ===========================================================================
+# Local watches/warnings -- Hurricane/Tropical Storm Watch or Warning for
+# Southeast Texas or Southwest Louisiana specifically, via NWS's official
+# alerts feed (free, no key, same system NHC's county-level watches and
+# warnings actually flow into). Runs every cycle regardless of whether a
+# storm is currently being tracked by bin number, since a watch/warning can
+# be issued/lifted independent of that.
+# ===========================================================================
+NWS_ALERTS_URL = "https://api.weather.gov/alerts/active?area=TX,LA"
+
+SETX_SWLA_COUNTIES = [
+    # Southeast Texas (Beaumont-Port Arthur)
+    "Jefferson", "Orange", "Chambers", "Hardin", "Newton",
+    # Southwest Louisiana (Lake Charles)
+    "Calcasieu", "Cameron", "Beauregard", "Allen", "Jefferson Davis",
+]
+
+TROPICAL_EVENT_KEYWORDS = ("Hurricane Watch", "Hurricane Warning", "Tropical Storm Watch", "Tropical Storm Warning")
+
+
+def _county_matches_in_area_desc(area_desc):
+    """area_desc is semicolon-separated, e.g. 'Coastal Cameron; Inland Cameron'.
+    Returns the specific listed areas that mention one of our target counties/parishes."""
+    matches = []
+    for area in (a.strip() for a in area_desc.split(";")):
+        if any(county.lower() in area.lower() for county in SETX_SWLA_COUNTIES):
+            matches.append(area)
+    return matches
+
+
+def check_local_watches_warnings(state):
+    text = _fetch_with_retries(NWS_ALERTS_URL, "NWS local watches/warnings")
+    if not text:
+        return
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return
+
+    active_now = set()
+    for feature in data.get("features", []):
+        props = feature.get("properties", {})
+        event = props.get("event", "")
+        if not any(kw.lower() == event.lower() for kw in TROPICAL_EVENT_KEYWORDS):
+            continue
+        for area in _county_matches_in_area_desc(props.get("areaDesc", "")):
+            active_now.add(f"{event}|{area}")
+
+    prev_active = set(state.get("local_watches_warnings", []))
+    if active_now == prev_active:
+        return
+
+    for key in sorted(active_now - prev_active):
+        event, area = key.split("|", 1)
+        emoji = "\U0001F534" if "Warning" in event else "\U0001F7E1"
+        try:
+            deliver(
+                f"{emoji} NEW: {event} now in effect for {area} (SETX/SWLA)\n\nSource: National Weather Service",
+                subject=f"{event} -- {area}",
+            )
+        except Exception as e:
+            print(f"Failed to deliver local watch/warning alert (non-fatal): {e}")
+
+    for key in sorted(prev_active - active_now):
+        event, area = key.split("|", 1)
+        try:
+            deliver(
+                f"✅ CANCELLED/EXPIRED: {event} no longer in effect for {area} (SETX/SWLA)",
+                subject=f"{event} cancelled -- {area}",
+            )
+        except Exception as e:
+            print(f"Failed to deliver local watch/warning cancellation alert (non-fatal): {e}")
+
+    state["local_watches_warnings"] = sorted(active_now)
+    save_state(state)
+
+
 def main():
     state = load_state()
+
+    check_local_watches_warnings(state)
 
     # --- Auto-discover the active Atlantic storm instead of relying on a
     # hardcoded suffix that has to be manually updated (see
