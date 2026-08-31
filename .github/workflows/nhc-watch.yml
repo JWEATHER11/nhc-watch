@@ -1,8 +1,8 @@
 name: NHC Storm Watch
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # DISABLED (superseded by the continuous fast-watch version): schedule:
+  # - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 permissions:
