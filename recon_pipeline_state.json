@@ -1,9 +1,3 @@
 {
-  "mission": {
-    "peak_fl_wind_kt": 51,
-    "peak_fl_wind_when": "7:11 PM CDT, day 21",
-    "lowest_pressure_mb": 996,
-    "lowest_pressure_when": "7:11 PM CDT, day 21"
-  },
-  "last_fix_zulu": "29/00:00:00Z"
+  "current_storm_recon_suffix": "NT5"
 }
