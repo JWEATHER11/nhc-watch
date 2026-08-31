@@ -5,16 +5,5 @@
     "Tropical Storm Warning|Lower Jefferson",
     "Tropical Storm Warning|West Cameron"
   ],
-  "current_storm_bin": "AT5",
-  "last_advisory_number": "2",
-  "last": {
-    "number": "2",
-    "status_and_name": "Tropical Depression Five",
-    "lat": 28.2,
-    "lon": -91.5,
-    "wind_mph": 35,
-    "pressure_mb": 1011
-  },
-  "last_sent_discussion_number": 2,
-  "last_sent_discussion_text": "The Air Force Hurricane Hunter aircraft data through early this afternoon showed the low-level circulation of this system gradually becoming better defined, and it was sufficient to designate it as Tropical Depression Five for the 18 UTC intermediate advisory. This is consistent with the improved radar and satellite presentation of the system, with a prominent curved band now evident to the south of the center. The aircraft measured peak 850-mb flight-level winds of 38 kt earlier today, and TAFB provided a T2.0/30 kt Dvorak estimate at 18 UTC. These data support a 30-kt intensity for this advisory. Another Air Force Hurricane Hunter mission is scheduled to investigate the system tonight.\n\nThe center of the depression lies to the north and east of prior estimates based on the aircraft data and recent surface observations. A low-level ridge over the southeastern United States is steering the system toward the west-northwest (300/5 kt), and this general motion should continue through the next couple of days. The system is expected to move onshore along the northwestern Gulf Coast within the warning area on Tuesday, with the updated 24-h forecast point just offshore. There were no significant changes to the track guidance this cycle, and the updated NHC forecast was adjusted slightly north of the previous prediction mainly due to the repositioning of the center.\n\nThe tropical cyclone is fairly compact and has a small radius of maximum wind. Although it only has about a day over the very warm Gulf waters, strengthening is expected within a generally low shear environment. Since the small size of the system makes it more susceptible to quicker intensity changes, the NHC intensity forecast has been raised and now lies above almost all of the intensity guidance, including HCCA and IVCN. The legacy hurricane regional models (HWRF/HMON) show even more strengthening than is forecast here. While this does not appear to be the most likely scenario, interests in the warning area are reminded to closely monitor the latest forecast updates."
+  "current_storm_bin": null
 }
