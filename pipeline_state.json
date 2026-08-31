@@ -1,19 +1,27 @@
 {
-  "last": {
-    "number": "19",
-    "status_and_name": "Remnants Of Bertha",
-    "lat": 30.0,
-    "lon": -96.0,
-    "wind_mph": 35,
-    "pressure_mb": 1008
-  },
-  "last_advisory_number": "19",
-  "last_sent_discussion_number": 19,
-  "last_sent_discussion_text": "Surface observations over eastern Texas indicate that Bertha no longer has a well-defined circulation, and has opened up into a trough. Therefore, the system has dissipated, and this will be the last advisory.\n\nBertha's remnants will likely continue to produce some locally heavy rainfall over portions of eastern and southern Texas, where isolated flash flooding is possible overnight.",
   "local_watches_warnings": [
     "Tropical Storm Warning|Chambers",
     "Tropical Storm Warning|East Cameron",
     "Tropical Storm Warning|Lower Jefferson",
     "Tropical Storm Warning|West Cameron"
-  ]
+  ],
+  "current_storm_bin": "AT5",
+  "pending_cone_verification": {
+    "advisory_num": "1",
+    "queued_at": 1788189630.0430644,
+    "full_message": "Issued: 1000 AM CDT Mon Aug 31 2026\n\nPotential Tropical Cyclone Five -- Advisory #1\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 46 mph)\nMin pressure: 1013 mb\nMovement: WNW at 5 mph\nTropical storm-force winds extend: NE 20 mi, SE 0 mi, SW 0 mi, NW 0 mi\nPeak forecast: 45 mph (Tropical Storm) at 7:00 AM, day 1\n\n(Next complete advisory at 400 PM)"
+  },
+  "pending_discussion": {
+    "advisory_num": "1",
+    "advisory_label": "Advisory #1"
+  },
+  "last_advisory_number": "1",
+  "last": {
+    "number": "1",
+    "status_and_name": "Potential Tropical Cyclone Five",
+    "lat": 27.8,
+    "lon": -91.0,
+    "wind_mph": 35,
+    "pressure_mb": 1013
+  }
 }
