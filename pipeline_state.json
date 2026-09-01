@@ -15,11 +15,6 @@
     "Tropical Storm Warning|West Cameron"
   ],
   "current_storm_bin": "AT5",
-  "pending_cone_verification": {
-    "advisory_num": "5",
-    "queued_at": 1788273941.229498,
-    "full_message": "Issued: 1000 AM CDT Tue Sep 01 2026\n\nTropical Storm Edouard -- Advisory #5\nCategory: Tropical Storm\nSustained wind: 50 mph (gusts 63 mph)\nMin pressure: 1000 mb\nMovement: NW at 8 mph\nTrack change: moved 19 mi WNW since advisory #4A\nTropical storm-force winds extend: NE 20 mi, SE 20 mi, SW 20 mi, NW 20 mi\nWind vs previous advisory: +10 mph (strengthened)\nPressure vs previous advisory: -3 mb (strengthening signal)\nPeak forecast: 65 mph (Tropical Storm) at 1:00 PM, day 1\n\n(Next complete advisory at 400 PM)"
-  },
   "last_advisory_number": "5",
   "last": {
     "number": "5",
