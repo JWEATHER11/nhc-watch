@@ -4,7 +4,12 @@
     "Hurricane Watch|West Cameron",
     "Tropical Storm Warning|Chambers",
     "Tropical Storm Warning|East Cameron",
+    "Tropical Storm Warning|Hardin",
     "Tropical Storm Warning|Lower Jefferson",
+    "Tropical Storm Warning|Northern Orange",
+    "Tropical Storm Warning|Southern Newton",
+    "Tropical Storm Warning|Southern Orange",
+    "Tropical Storm Warning|Upper Jefferson",
     "Tropical Storm Warning|West Cameron"
   ],
   "current_storm_bin": "AT5",
