@@ -14,20 +14,5 @@
     "Tropical Storm Warning|Upper Jefferson",
     "Tropical Storm Warning|West Cameron"
   ],
-  "current_storm_bin": "AT5",
-  "last_advisory_number": "4A",
-  "last": {
-    "number": "4A",
-    "status_and_name": "Tropical Storm Edouard",
-    "lat": 29.3,
-    "lon": -93.0,
-    "wind_mph": 40,
-    "pressure_mb": 1003
-  },
-  "last_sent_discussion_number": 4,
-  "last_sent_discussion_text": "It has been easy to track the center of Edouard this morning, showing up as a well-defined core of shallow convection on shortwave infrared satellite imagery and radar reflectivity from Lake Charles, Louisiana (KLCH). While the final fixes from the prior Air Force Reserve reconnaissance mission did not show an additional pressure drop, their remarks did note a nascent low-level eyewall was trying to form, which can also be seen from land-based radar. This structure could prove important for Edouard's near-term intensification prospects as deep convection begins to reform close to the storm center. For now, the initial intensity remains 35 kt this advisory, in agreement with radial velocity data from KLCH and the 06 UTC TAFB Dvorak intensity estimate. Another Air Force Reserve reconnaissance mission is scheduled to investigate Edouard again this morning.\n\nThe intensity forecast today is problematic. Edouard has managed to develop a small core that could be prone to rapid changes in intensity. In addition, environmental conditions are quite favorable for intensification while Edouard remains over water, with 31 C sea-surface temperatures, and low vertical wind shear diagnosed at 4 kt by UW-CIMSS. The raw output from the hurricane-regional models responds to these factors by showing substantial intensification today, with both HMON and HAFS-A making Edouard a hurricane before landfall. HAFS-B and HWRF show a somewhat more tempered rate of intensification. Given Edouard's current structure, a rapid increase in intensity before landfall is still anticipated, and the latest NHC forecast shows a 55 kt intensity near landfall, which is close to the raw model HAFS-B output at that time. Of note, this is well above the interpolated intensity guidance which can struggle to depict rapid short-term intensity changes in these cases close to landfall. After landfall, Edouard should quickly weaken, likely becoming post-tropical in 36 h and dissipating by 48 h.\n\nEdouard continues to move off to the west-northwest at 300/7 kt. A prominent low- to mid-level ridge centered over the southeastern United States should continue to steer the tropical cyclone to the west-northwest then turning more northwest after 24 h as the storm rounds the ridge. On this track, Edouard should make landfall later today near the Louisiana/Texas border, and then push inland over eastern Texas by tonight. The track guidance remains in good agreement, though with just a slight westward shift, and the NHC track forecast is just a touch west of the previous advisory, closest to the HFIP Corrected Consensus Approach (HCCA).",
-  "pending_discussion": {
-    "advisory_num": "4A",
-    "advisory_label": "Advisory #4A"
-  }
+  "current_storm_bin": null
 }
