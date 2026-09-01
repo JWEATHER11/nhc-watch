@@ -7,5 +7,23 @@
     "Tropical Storm Warning|Lower Jefferson",
     "Tropical Storm Warning|West Cameron"
   ],
-  "current_storm_bin": null
+  "current_storm_bin": "AT5",
+  "pending_cone_verification": {
+    "advisory_num": "3A",
+    "queued_at": 1788252152.3778872,
+    "full_message": "Issued: 100 AM CDT Tue Sep 01 2026\n\nTropical Storm Edouard -- Advisory #3A\nCategory: Tropical Storm\nSustained wind: 40 mph (gusts 52 mph)\nMin pressure: 1005 mb\nMovement: WNW at 7 mph\nTropical storm-force winds extend: NE 20 mi, SE 0 mi, SW 0 mi, NW 20 mi\nPeak forecast: 60 mph (Tropical Storm) at 7:00 AM, day 1\n\n(Next complete advisory at 400 AM)"
+  },
+  "pending_discussion": {
+    "advisory_num": "3A",
+    "advisory_label": "Advisory #3A"
+  },
+  "last_advisory_number": "3A",
+  "last": {
+    "number": "3A",
+    "status_and_name": "Tropical Storm Edouard",
+    "lat": 28.8,
+    "lon": -92.5,
+    "wind_mph": 40,
+    "pressure_mb": 1005
+  }
 }
