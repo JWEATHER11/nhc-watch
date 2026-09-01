@@ -13,15 +13,24 @@
     "Tropical Storm Warning|West Cameron"
   ],
   "current_storm_bin": "AT5",
-  "last_advisory_number": "5A",
+  "last_advisory_number": "6",
   "last": {
-    "number": "5A",
+    "number": "6",
     "status_and_name": "Tropical Storm Edouard",
-    "lat": 29.7,
-    "lon": -93.6,
+    "lat": 29.9,
+    "lon": -94.0,
     "wind_mph": 50,
-    "pressure_mb": 1000
+    "pressure_mb": 998
   },
   "last_sent_discussion_number": 5,
-  "last_sent_discussion_text": "Edouard is a small but strengthening tropical storm. The center has been trackable this morning using NWS radar data from Lake Charles, Louisiana (KLCH), and recent data show the inner-core structure of the system is becoming better organized. There has been a notable increase in deep convection near and to the south of the center, and a recent dropsonde released in that area reported mean boundary layer winds of 61 kt. Doppler velocities have also notably strengthened during the past couple of hours, and adjusting these data to estimate a surface wind support raising the initial intensity to 45 kt. The last center dropsonde from the Air Force Hurricane Hunters showed the central pressure has fallen to 1000 mb.\n\nEnvironmental and oceanic conditions are conducive for additional strengthening for as long as the center remains offshore. With very warm Gulf waters and weak vertical wind shear, the hurricane regional models continue to highlight the potential for continued strengthening through landfall. The 12-h forecast point for Edouard is well inland, but note that additional strengthening is expected that cannot be easily reflected in the official forecast. A Tropical Storm Warning and Hurricane Watch remain in effect for portions of the Upper Texas coast and southwestern Louisiana. Given the improved radar structure of Edouard and the expectation of additional strengthening, NHC will issue hourly Tropical Cyclone Updates (TCU) beginning at 1100 am CDT (16 UTC). Once inland, Edouard is likely to rapidly weaken and should dissipate on Wednesday.\n\nSome short-term wobbles have been observed in radar data during the past few hours, but the longer-term motion of Edouard is northwestward (305/7 kt). This general motion is expected to continue through tonight, which will bring the center of Edouard onshore near the Texas/Louisiana border within the warning area this afternoon and then inland across southeastern Texas tonight. The updated NHC track forecast lies slightly to the right of the previous prediction based on the latest consensus trends."
+  "last_sent_discussion_text": "Edouard is a small but strengthening tropical storm. The center has been trackable this morning using NWS radar data from Lake Charles, Louisiana (KLCH), and recent data show the inner-core structure of the system is becoming better organized. There has been a notable increase in deep convection near and to the south of the center, and a recent dropsonde released in that area reported mean boundary layer winds of 61 kt. Doppler velocities have also notably strengthened during the past couple of hours, and adjusting these data to estimate a surface wind support raising the initial intensity to 45 kt. The last center dropsonde from the Air Force Hurricane Hunters showed the central pressure has fallen to 1000 mb.\n\nEnvironmental and oceanic conditions are conducive for additional strengthening for as long as the center remains offshore. With very warm Gulf waters and weak vertical wind shear, the hurricane regional models continue to highlight the potential for continued strengthening through landfall. The 12-h forecast point for Edouard is well inland, but note that additional strengthening is expected that cannot be easily reflected in the official forecast. A Tropical Storm Warning and Hurricane Watch remain in effect for portions of the Upper Texas coast and southwestern Louisiana. Given the improved radar structure of Edouard and the expectation of additional strengthening, NHC will issue hourly Tropical Cyclone Updates (TCU) beginning at 1100 am CDT (16 UTC). Once inland, Edouard is likely to rapidly weaken and should dissipate on Wednesday.\n\nSome short-term wobbles have been observed in radar data during the past few hours, but the longer-term motion of Edouard is northwestward (305/7 kt). This general motion is expected to continue through tonight, which will bring the center of Edouard onshore near the Texas/Louisiana border within the warning area this afternoon and then inland across southeastern Texas tonight. The updated NHC track forecast lies slightly to the right of the previous prediction based on the latest consensus trends.",
+  "pending_cone_verification": {
+    "advisory_num": "6",
+    "queued_at": 1788295055.905906,
+    "full_message": "Issued: 400 PM CDT Tue Sep 01 2026\n\nTropical Storm Edouard -- Advisory #6\nCategory: Tropical Storm\nSustained wind: 50 mph (gusts 63 mph)\nMin pressure: 998 mb\nMovement: NW at 7 mph\nTrack change: moved 28 mi WNW since advisory #5A\nTropical storm-force winds extend: NE 20 mi, SE 20 mi, SW 20 mi, NW 20 mi\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: -2 mb (strengthening signal)\nPeak forecast: 50 mph (Tropical Storm) at 10:00 AM, day 1\n\n(Next complete advisory at 1000 PM)"
+  },
+  "pending_discussion": {
+    "advisory_num": "6",
+    "advisory_label": "Advisory #6"
+  }
 }
