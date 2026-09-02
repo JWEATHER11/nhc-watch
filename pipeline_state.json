@@ -12,15 +12,11 @@
     "wind_mph": 35,
     "pressure_mb": 1002
   },
-  "last_sent_discussion_number": 6,
-  "last_sent_discussion_text": "Edouard continued to strengthen through its landfall as a 50-kt tropical storm in southwestern Cameron Parish, Louisiana, at 1920 UTC. Current radar data shows convective bands with heavy rainfall and gusty winds spreading over portions of southeastern Texas on the west side of the storm. Based on the latest surface observations, it appears a little weakening has occurred since landfall, and the initial intensity is lowered slightly to 45 kt. A Tropical Storm Warning remains in effect for portions of the Upper Texas coast and southwestern Louisiana.\n\nEdouard is moving toward the northwest (305/7 kt) and will remain on this heading through early Wednesday, bringing the center farther inland over eastern Texas. No notable changes were made to the NHC track forecast. Quick weakening is expected now that the center is inland, and Edouard is likely to become a tropical depression tonight and dissipate by Wednesday night. Even though the system is inland, the threat of heavy rainfall and flash flooding will continue through the overnight hours.",
+  "last_sent_discussion_number": 7,
+  "last_sent_discussion_text": "Edouard has remained well-organized in radar imagery as it moves farther inland over southeastern Texas. However, the convective cloud tops near the center are gradually, if unsteadily warming, and Doppler wind velocities near the center have decreased during the last hour or so. Based on this, it is estimated that Edouard has weakened to a tropical depression. It should be noted that there have been no reports of winds or pressures from the storm core area after it passed Beaumont, Texas.\n\nContinued weakening is expected as the center moves farther inland, and the dynamical guidance suggests that the surface center should dissipate between 18-36 h. The intensity forecast thus calls for the system to last 24 h before dissipation.\n\nEdouard is moving northwestward or 315/7 kt and will remain on this heading through early Wednesday, bringing the center farther inland over eastern Texas. This general motion should continue until the surface center dissipates.\n\nThis is the last tropical cyclone discussion issued by the National Hurricane Center on this system. Future information on this system can be found in discussions issued by the Weather Prediction Center beginning at 400 AM CDT, under AWIPS header TCDAT5, WMO header WTNT45 KWNH, and on the web at www.hurricanes.gov.\n\nRainfall forecasts for the United States can always be found at https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml and outlooks of flash flood risks can be found at https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php .",
   "pending_cone_verification": {
     "advisory_num": "7",
     "queued_at": 1788318145.808248,
     "full_message": "Issued: 1000 PM CDT Tue Sep 01 2026\n\nTropical Depression Edouard -- Advisory #7\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 46 mph)\nMin pressure: 1002 mb\nMovement: NW at 8 mph\nTrack change: moved 55 mi NW since advisory #6\nWind vs previous advisory: -15 mph (weakened)\nPressure vs previous advisory: +4 mb (weakening signal)\nPeak forecast: 35 mph (Tropical Depression) at 10:00 PM, day 1"
-  },
-  "pending_discussion": {
-    "advisory_num": "7",
-    "advisory_label": "Advisory #7"
   }
 }
