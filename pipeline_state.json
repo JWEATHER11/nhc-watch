@@ -1,27 +1,26 @@
 {
   "local_watches_warnings": [
-    "Tropical Storm Warning|Chambers",
-    "Tropical Storm Warning|East Cameron",
-    "Tropical Storm Warning|Hardin",
-    "Tropical Storm Warning|Lower Jefferson",
-    "Tropical Storm Warning|Northern Calcasieu",
-    "Tropical Storm Warning|Northern Orange",
-    "Tropical Storm Warning|Southern Calcasieu",
-    "Tropical Storm Warning|Southern Newton",
-    "Tropical Storm Warning|Southern Orange",
-    "Tropical Storm Warning|Upper Jefferson",
-    "Tropical Storm Warning|West Cameron"
+    "Tropical Storm Warning|East Cameron"
   ],
   "current_storm_bin": "AT5",
-  "last_advisory_number": "6",
+  "last_advisory_number": "7",
   "last": {
-    "number": "6",
-    "status_and_name": "Tropical Storm Edouard",
-    "lat": 29.9,
-    "lon": -94.0,
-    "wind_mph": 50,
-    "pressure_mb": 998
+    "number": "7",
+    "status_and_name": "Tropical Depression Edouard",
+    "lat": 30.5,
+    "lon": -94.6,
+    "wind_mph": 35,
+    "pressure_mb": 1002
   },
   "last_sent_discussion_number": 6,
-  "last_sent_discussion_text": "Edouard continued to strengthen through its landfall as a 50-kt tropical storm in southwestern Cameron Parish, Louisiana, at 1920 UTC. Current radar data shows convective bands with heavy rainfall and gusty winds spreading over portions of southeastern Texas on the west side of the storm. Based on the latest surface observations, it appears a little weakening has occurred since landfall, and the initial intensity is lowered slightly to 45 kt. A Tropical Storm Warning remains in effect for portions of the Upper Texas coast and southwestern Louisiana.\n\nEdouard is moving toward the northwest (305/7 kt) and will remain on this heading through early Wednesday, bringing the center farther inland over eastern Texas. No notable changes were made to the NHC track forecast. Quick weakening is expected now that the center is inland, and Edouard is likely to become a tropical depression tonight and dissipate by Wednesday night. Even though the system is inland, the threat of heavy rainfall and flash flooding will continue through the overnight hours."
+  "last_sent_discussion_text": "Edouard continued to strengthen through its landfall as a 50-kt tropical storm in southwestern Cameron Parish, Louisiana, at 1920 UTC. Current radar data shows convective bands with heavy rainfall and gusty winds spreading over portions of southeastern Texas on the west side of the storm. Based on the latest surface observations, it appears a little weakening has occurred since landfall, and the initial intensity is lowered slightly to 45 kt. A Tropical Storm Warning remains in effect for portions of the Upper Texas coast and southwestern Louisiana.\n\nEdouard is moving toward the northwest (305/7 kt) and will remain on this heading through early Wednesday, bringing the center farther inland over eastern Texas. No notable changes were made to the NHC track forecast. Quick weakening is expected now that the center is inland, and Edouard is likely to become a tropical depression tonight and dissipate by Wednesday night. Even though the system is inland, the threat of heavy rainfall and flash flooding will continue through the overnight hours.",
+  "pending_cone_verification": {
+    "advisory_num": "7",
+    "queued_at": 1788318145.808248,
+    "full_message": "Issued: 1000 PM CDT Tue Sep 01 2026\n\nTropical Depression Edouard -- Advisory #7\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 46 mph)\nMin pressure: 1002 mb\nMovement: NW at 8 mph\nTrack change: moved 55 mi NW since advisory #6\nWind vs previous advisory: -15 mph (weakened)\nPressure vs previous advisory: +4 mb (weakening signal)\nPeak forecast: 35 mph (Tropical Depression) at 10:00 PM, day 1"
+  },
+  "pending_discussion": {
+    "advisory_num": "7",
+    "advisory_label": "Advisory #7"
+  }
 }
