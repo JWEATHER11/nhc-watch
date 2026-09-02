@@ -11,10 +11,5 @@
     "pressure_mb": 1004
   },
   "last_sent_discussion_number": 9,
-  "last_sent_discussion_text": "Rainfall forecasts for the United States can always be found at https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml and outlooks of flash flood risks can be found at https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php\n\nFor a list of rainfall observations and wind reports associated with Edouard, see the companion storm summary at WBCSCCNS5 with the WMO header ACUS45 KWBC or at the following link: www.wpc.ncep.noaa.gov/discussions/nfdscc5.html.",
-  "pending_cone_verification": {
-    "advisory_num": "9",
-    "queued_at": 1788360578.4680514,
-    "full_message": "Issued: 1000 AM CDT Wed Sep 02 2026\n\nTropical Depression Edouard -- Advisory #9\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 40 mph)\nMin pressure: 1004 mb\nMovement: NNW at 5 mph\nTrack change: moved 35 mi N since advisory #8\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: +0 mb (steady)\nPeak forecast: 35 mph (Tropical Depression) at 4:00 AM, day 2\n\n(Next complete advisory at 400 PM)"
-  }
+  "last_sent_discussion_text": "Rainfall forecasts for the United States can always be found at https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml and outlooks of flash flood risks can be found at https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php\n\nFor a list of rainfall observations and wind reports associated with Edouard, see the companion storm summary at WBCSCCNS5 with the WMO header ACUS45 KWBC or at the following link: www.wpc.ncep.noaa.gov/discussions/nfdscc5.html."
 }
