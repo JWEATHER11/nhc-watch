@@ -12,15 +12,11 @@
     "wind_mph": 35,
     "pressure_mb": 1004
   },
-  "last_sent_discussion_number": 7,
-  "last_sent_discussion_text": "Edouard has remained well-organized in radar imagery as it moves farther inland over southeastern Texas. However, the convective cloud tops near the center are gradually, if unsteadily warming, and Doppler wind velocities near the center have decreased during the last hour or so. Based on this, it is estimated that Edouard has weakened to a tropical depression. It should be noted that there have been no reports of winds or pressures from the storm core area after it passed Beaumont, Texas.\n\nContinued weakening is expected as the center moves farther inland, and the dynamical guidance suggests that the surface center should dissipate between 18-36 h. The intensity forecast thus calls for the system to last 24 h before dissipation.\n\nEdouard is moving northwestward or 315/7 kt and will remain on this heading through early Wednesday, bringing the center farther inland over eastern Texas. This general motion should continue until the surface center dissipates.\n\nThis is the last tropical cyclone discussion issued by the National Hurricane Center on this system. Future information on this system can be found in discussions issued by the Weather Prediction Center beginning at 400 AM CDT, under AWIPS header TCDAT5, WMO header WTNT45 KWNH, and on the web at www.hurricanes.gov.\n\nRainfall forecasts for the United States can always be found at https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml and outlooks of flash flood risks can be found at https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php .",
+  "last_sent_discussion_number": 8,
+  "last_sent_discussion_text": "Rainfall forecasts for the United States can always be found at https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml and outlooks of flash flood risks can be found at https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php\n\nFor a list of rainfall observations (and wind reports) associated with Edouard, see the companion storm summary at WBCSCCNS5 with the WMO header ACUS45 KWBC or at the following link: www.wpc.ncep.noaa.gov/discussions/nfdscc5.html.",
   "pending_cone_verification": {
     "advisory_num": "8",
     "queued_at": 1788338443.6085944,
     "full_message": "Issued: 400 AM CDT Wed Sep 02 2026\n\nTropical Depression Edouard -- Advisory #8\nCategory: Tropical Depression\nSustained wind: 35 mph (gusts 46 mph)\nMin pressure: 1004 mb\nMovement: NNW at 5 mph\nTrack change: moved 32 mi NW since advisory #7\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: +2 mb (weakening signal)\nPeak forecast: 35 mph (Tropical Depression) at 10:00 PM, day 1\n\n(Next complete advisory at 1000 AM)"
-  },
-  "pending_discussion": {
-    "advisory_num": "8",
-    "advisory_label": "Advisory #8"
   }
 }
