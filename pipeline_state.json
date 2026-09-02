@@ -1,7 +1,5 @@
 {
-  "local_watches_warnings": [
-    "Tropical Storm Warning|East Cameron"
-  ],
+  "local_watches_warnings": [],
   "current_storm_bin": "AT5",
   "last_advisory_number": "8",
   "last": {
