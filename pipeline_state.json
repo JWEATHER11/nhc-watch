@@ -1,19 +1,24 @@
 {
   "local_watches_warnings": [],
   "current_storm_bin": "AT5",
-  "last_advisory_number": "11",
+  "last_advisory_number": "12",
   "last": {
-    "number": "11",
+    "number": "12",
     "status_and_name": "Remnants Of Edouard",
-    "lat": 32.2,
-    "lon": -95.7,
+    "lat": 32.5,
+    "lon": -96.5,
     "wind_mph": 25,
-    "pressure_mb": 1011
+    "pressure_mb": 1012
   },
   "last_sent_discussion_number": 9,
   "last_sent_discussion_text": "Rainfall forecasts for the United States can always be found at https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml and outlooks of flash flood risks can be found at https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php\n\nFor a list of rainfall observations and wind reports associated with Edouard, see the companion storm summary at WBCSCCNS5 with the WMO header ACUS45 KWBC or at the following link: www.wpc.ncep.noaa.gov/discussions/nfdscc5.html.",
   "pending_discussion": {
-    "advisory_num": "11",
-    "advisory_label": "Advisory #11"
+    "advisory_num": "12",
+    "advisory_label": "Advisory #12"
+  },
+  "pending_cone_verification": {
+    "advisory_num": "12",
+    "queued_at": 1788424308.0826194,
+    "full_message": "Issued: 400 AM CDT Thu Sep 03 2026\n\nRemnants Of Edouard -- Advisory #12\nCategory: Tropical Depression\nSustained wind: 25 mph (gusts 35 mph)\nMin pressure: 1012 mb\nMovement: WNW at 5 mph\nTrack change: moved 51 mi WNW since advisory #11\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: +1 mb (weakening signal)\nPeak forecast: 25 mph (Tropical Depression) at 10:00 PM, day 2"
   }
 }
