@@ -1,19 +1,4 @@
 {
   "local_watches_warnings": [],
-  "current_storm_bin": "AT5",
-  "last_advisory_number": "12",
-  "last": {
-    "number": "12",
-    "status_and_name": "Remnants Of Edouard",
-    "lat": 32.5,
-    "lon": -96.5,
-    "wind_mph": 25,
-    "pressure_mb": 1012
-  },
-  "last_sent_discussion_number": 9,
-  "last_sent_discussion_text": "Rainfall forecasts for the United States can always be found at https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml and outlooks of flash flood risks can be found at https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php\n\nFor a list of rainfall observations and wind reports associated with Edouard, see the companion storm summary at WBCSCCNS5 with the WMO header ACUS45 KWBC or at the following link: www.wpc.ncep.noaa.gov/discussions/nfdscc5.html.",
-  "pending_discussion": {
-    "advisory_num": "12",
-    "advisory_label": "Advisory #12"
-  }
+  "current_storm_bin": null
 }
