@@ -15,10 +15,5 @@
   "pending_discussion": {
     "advisory_num": "11",
     "advisory_label": "Advisory #11"
-  },
-  "pending_cone_verification": {
-    "advisory_num": "11",
-    "queued_at": 1788402783.3672323,
-    "full_message": "Issued: 1000 PM CDT Wed Sep 02 2026\n\nRemnants Of Edouard -- Advisory #11\nCategory: Tropical Depression\nSustained wind: 25 mph (gusts 35 mph)\nMin pressure: 1011 mb\nMovement: NW at 6 mph\nTrack change: moved 51 mi NW since advisory #10\nWind vs previous advisory: +0 mph (held steady)\nPressure vs previous advisory: +0 mb (steady)\nPeak forecast: 25 mph (Tropical Depression) at 4:00 PM, day 2\n\n(Next complete advisory at 400 AM)"
   }
 }
