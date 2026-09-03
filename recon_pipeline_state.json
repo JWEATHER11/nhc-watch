@@ -1,3 +1,4 @@
 {
-  "current_storm_recon_suffix": "NT5"
+  "current_storm_recon_suffix": "NT5",
+  "fetch_failure_alerted": true
 }
